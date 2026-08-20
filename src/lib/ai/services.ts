@@ -35,6 +35,16 @@ export interface Verified<T> {
   safe: boolean;
 }
 
+/**
+ * The canonical keys the matcher accepted as transferable for this job. Passed
+ * to the verifier so it does not block the AI for reporting them.
+ */
+function transferableKeys(match: MatchResult): string[] {
+  return match.requirements.required
+    .filter((v) => v.weight > 0 && v.weight < 1)
+    .map((v) => v.requirement);
+}
+
 function jobFingerprint(job: NormalisedJob): string {
   // Title and company matter because the same description under a different
   // title is a different job; description length guards against a truncated
@@ -70,12 +80,11 @@ export class AiServices {
       effort: 'low',
     });
 
-    const check = verifyClaims(this.profile, [
-      output.verdict,
-      ...output.strengths,
-      ...output.concerns,
-      ...output.preparation,
-    ]);
+    const check = verifyClaims(
+      this.profile,
+      [output.verdict, ...output.strengths, ...output.concerns, ...output.preparation],
+      { transferable: transferableKeys(match) }
+    );
     return { output, violations: check.violations, safe: check.ok };
   }
 
@@ -92,7 +101,7 @@ export class AiServices {
     });
 
     const texts = [output.summary, ...output.bullets.flatMap((b) => b.bullets)];
-    const check = verifyClaims(this.profile, texts);
+    const check = verifyClaims(this.profile, texts, { transferable: transferableKeys(match) });
     const provenanceViolations = verifyProvenance(this.profile, output.provenance);
 
     // A skill order that names something not in the profile is an addition
@@ -122,7 +131,9 @@ export class AiServices {
       effort: 'medium',
     });
 
-    const check = verifyClaims(this.profile, [...output.paragraphs, ...output.claimsMade, output.subjectLine]);
+    const check = verifyClaims(this.profile, [...output.paragraphs, ...output.claimsMade, output.subjectLine], {
+      transferable: transferableKeys(match),
+    });
     return { output, violations: check.violations, safe: check.ok };
   }
 }

@@ -5,6 +5,7 @@ import { assessRelevance, classifyTitle, shrinkRatio } from '../src/lib/match/re
 import { extractRequirements, scoreJob } from '../src/lib/match/score.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import type { NormalisedJob } from '../src/lib/jobs/types.ts';
+import { detectRequiredLanguages, splitSentences } from '../src/lib/jobs/parse.ts';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -314,5 +315,57 @@ test('a snippet lowers confidence and does not assert missing skills', () => {
   assert.ok(
     snippet.components.technical.reasons.some((r) => /500/.test(r)),
     'the truncation must be stated in the reasons the user sees'
+  );
+});
+
+// --- language requirements -----------------------------------------------
+
+test('REGRESSION: a German-language requirement written in German is detected', () => {
+  // Verbatim from a real Arbeitnow posting. The English-only detector missed it
+  // entirely, so the job scored 81% and was recommended to a candidate who does
+  // not speak German. The abbreviation "mind." also broke sentence splitting,
+  // separating the requirement from its "C1" level.
+  const description = [
+    'Deine Aufgaben:',
+    '- Du baust unsere GTM-Systeme',
+    'Dein Profil:',
+    '- Du kommunizierst sicher auf Deutsch und Englisch (mind. C1)',
+    '- Erfahrung mit SQL und Python',
+    'Benefits:',
+    '- Job Rad oder Deutschland Ticket: Waehle, ob du lieber dein Job Rad bezuschussen laesst.',
+    '- Ueber EGYM Wellpass kannst du deutschlandweit Sportangebote nutzen.',
+  ].join('\n');
+
+  const languages = detectRequiredLanguages(description);
+  assert.ok(languages.includes('German'), `German not detected: ${JSON.stringify(languages)}`);
+  assert.ok(languages.includes('English'), `English not detected: ${JSON.stringify(languages)}`);
+
+  // And it must now block, since the profile does not list German.
+  const result = scoreJob(profile, job({ title: 'AI Go-to-Market Engineer', description, languages }), {
+    preferredCountries: COUNTRIES,
+  });
+  assert.ok(result.blockers.some((b) => /German/.test(b)), `expected a German blocker, got ${JSON.stringify(result.blockers)}`);
+  assert.notEqual(result.recommendation, 'highly_recommended');
+});
+
+test('a language merely mentioned in benefits is not a requirement', () => {
+  // "Deutschland Ticket" and "deutschlandweit" appear in the benefits section of
+  // almost every German posting. Treating those as a German requirement would
+  // exclude the entire German market for an English-speaking candidate.
+  const languages = detectRequiredLanguages(
+    [
+      'We work in English across the whole engineering team.',
+      'Benefits: Deutschland Ticket, and deutschlandweit gym access.',
+      'Our office team also speaks German informally.',
+    ].join('\n')
+  );
+  assert.ok(!languages.includes('German'), `German wrongly treated as required: ${JSON.stringify(languages)}`);
+});
+
+test('abbreviations do not split a sentence apart', () => {
+  const sentences = splitSentences('Du sprichst Deutsch (mind. C1). Und Englisch.');
+  assert.ok(
+    sentences.some((s) => /mind\. C1/.test(s)),
+    `"mind. C1" was split: ${JSON.stringify(sentences)}`
   );
 });

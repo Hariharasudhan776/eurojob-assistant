@@ -72,6 +72,50 @@ export function isNegatedContext(clause: string): boolean {
   );
 }
 
+/**
+ * Is the clause hypothetical rather than assertive?
+ *
+ * A real cover letter said: "If cloud and NoSQL are day-one requirements rather
+ * than things to pick up, I am a partial match and you should weigh that."
+ * Nothing there claims cloud or NoSQL experience -- it is the candidate telling
+ * the employer to weigh a gap. The first verifier read it as two fabricated
+ * claims, which would have blocked one of the most honest sentences in the
+ * letter.
+ */
+export function isHypotheticalContext(clause: string): boolean {
+  const t = clause.toLowerCase();
+  return (
+    /^\s*if\b/.test(t) ||
+    /\bif\s+\w+\s+(?:and|are|is|were|was)\b/.test(t) ||
+    /\brather than\b|\bwhether\b|\bin case\b|\bshould you\b|\bassuming\b/.test(t) ||
+    /\bpick(?:ing)? up\b|\bpartial match\b|\bday[- ]one\b|\bwilling to learn\b/.test(t) ||
+    /\bweigh (?:that|this)\b|\bup to you\b|\byou should\b/.test(t)
+  );
+}
+
+/**
+ * Names from the profile that must not be read as skills: employers,
+ * institutions, and project names. Longest first, so a longer company name is
+ * masked before a shorter substring of it.
+ */
+function collectProperNouns(profile: CandidateProfile): string[] {
+  const names = new Set<string>();
+  for (const role of profile.experience) names.add(role.company);
+  for (const education of profile.education) names.add(education.institution);
+  for (const project of profile.projects) names.add(project.name);
+  names.add(profile.name);
+  return [...names].filter((n) => n.trim().length > 2).sort((a, b) => b.length - a.length);
+}
+
+function maskProperNouns(text: string, properNouns: string[]): string {
+  let masked = text;
+  for (const name of properNouns) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    masked = masked.replace(new RegExp(escaped, 'gi'), ' NAME ');
+  }
+  return masked;
+}
+
 /** Split into clauses, so a negation in one does not excuse a claim in another. */
 function clauses(text: string): string[] {
   return text
@@ -100,25 +144,50 @@ function experienceYearClaims(text: string): { value: number; text: string }[] {
   return claims;
 }
 
-export function verifyClaims(profile: CandidateProfile, texts: string[]): VerificationResult {
+export interface VerifyOptions {
+  /**
+   * Canonical skill keys the deterministic matcher already classified as
+   * TRANSFERABLE for this job (e.g. MySQL satisfied partially by PostgreSQL).
+   *
+   * Without this, the verifier blocks the AI for faithfully reporting what the
+   * matcher decided. A real run flagged "MySQL" in a sentence explaining that
+   * the candidate's PostgreSQL depth partially covers a MySQL requirement --
+   * which is true, useful, and exactly what the summary is for. These are
+   * downgraded to warnings so a human still sees the framing, rather than
+   * blocked outright.
+   */
+  transferable?: string[];
+}
+
+export function verifyClaims(
+  profile: CandidateProfile,
+  texts: string[],
+  options: VerifyOptions = {}
+): VerificationResult {
   const violations: Violation[] = [];
   const verifiedSkills = new Set<string>();
   const acknowledgedGaps = new Set<string>();
 
   const evidenced = new Set(profile.skills.map((s) => s.canonical));
+  const transferable = new Set(options.transferable ?? []);
+  const properNouns = collectProperNouns(profile);
 
   for (const text of texts) {
     if (!text) continue;
 
     // 1. Technologies asserted as the candidate's that the profile cannot evidence.
     for (const clause of clauses(text)) {
-      const negated = isNegatedContext(clause);
-      for (const mentioned of extractSkills(clause)) {
+      const notAClaim = isNegatedContext(clause) || isHypotheticalContext(clause);
+      // Proper nouns are masked first. "Meridian" is one of this candidate's
+      // actual employers, and the taxonomy's `agile` alias matched inside the
+      // company name -- so every honest sentence saying where he worked was
+      // reported as a fabricated Scrum claim.
+      for (const mentioned of extractSkills(maskProperNouns(clause, properNouns))) {
         if (evidenced.has(mentioned)) {
           verifiedSkills.add(mentioned);
           continue;
         }
-        if (negated) {
+        if (notAClaim) {
           // Being told plainly what the candidate lacks is the desired
           // behaviour, so it is recorded rather than flagged.
           acknowledgedGaps.add(mentioned);
@@ -140,11 +209,23 @@ export function verifyClaims(profile: CandidateProfile, texts: string[]): Verifi
         const category = lookup(mentioned)?.category;
         const isTechnical = category !== undefined && category !== 'domain' && category !== 'soft';
 
+        if (transferable.has(mentioned)) {
+          violations.push({
+            severity: 'warning',
+            kind: 'unevidenced_skill',
+            detail: `"${display(mentioned)}" is discussed as a transferable match. Check it is framed as adjacent experience, not as direct experience.`,
+            offendingText: excerpt(clause, display(mentioned)),
+          });
+          continue;
+        }
+
         violations.push({
           severity: isTechnical ? 'blocking' : 'warning',
           kind: 'unevidenced_skill',
           detail: `"${display(mentioned)}" is presented as the candidate's but there is no evidence for it in the profile.`,
-          offendingText: clause.length > 200 ? `${clause.slice(0, 200)}...` : clause,
+          // Centred on the mention, not the start of the clause: a long clause
+          // truncated from the front hides the very words being reported.
+          offendingText: excerpt(clause, display(mentioned)),
         });
       }
     }
@@ -246,4 +327,14 @@ function tokenSet(text: string): Set<string> {
       .split(/\s+/)
       .filter((w) => w.length > 2 && !STOPWORDS.has(w))
   );
+}
+
+
+/** A window around `needle`, so a violation always shows the words it is about. */
+function excerpt(text: string, needle: string, radius = 90): string {
+  const index = text.toLowerCase().indexOf(needle.toLowerCase());
+  if (index === -1) return text.length > radius * 2 ? `${text.slice(0, radius * 2)}...` : text;
+  const start = Math.max(0, index - radius);
+  const end = Math.min(text.length, index + needle.length + radius);
+  return `${start > 0 ? '...' : ''}${text.slice(start, end).trim()}${end < text.length ? '...' : ''}`;
 }

@@ -113,3 +113,37 @@ test('provenance tolerates a real rewrite but catches an invented source', () =>
   assert.equal(invented.length, 1);
   assert.equal(invented[0]!.kind, 'untraceable_text');
 });
+
+test('REGRESSION: an employer name is not a skill claim', () => {
+  // "Meridian" is a real employer in this profile, and the taxonomy has
+  // `agile` as an alias for Agile/Scrum. Every honest sentence naming the
+  // company was being reported as a fabricated Scrum claim.
+  const result = verifyClaims(profile, [
+    'At Meridian I did query performance optimisation and production uptime support for offshore clients.',
+    'At Meridian Software Services I delivered six government modules.',
+  ]);
+  assert.ok(
+    !result.violations.some((v) => /Agile/.test(v.detail)),
+    `employer name misread as a skill: ${JSON.stringify(result.violations.map((v) => v.detail))}`
+  );
+});
+
+test('REGRESSION: a hypothetical about a gap is not a claim', () => {
+  // Verbatim from a generated cover letter. It is the candidate telling the
+  // employer to weigh a gap, and it must not be blocked.
+  const result = verifyClaims(profile, [
+    'If cloud and NoSQL are day-one requirements rather than things to pick up, I am a partial match and you should weigh that.',
+    'If Kubernetes is essential, I would need to learn it.',
+  ]);
+  assert.equal(result.ok, true, `blocked an honest hypothetical: ${JSON.stringify(result.violations.map((v) => v.detail))}`);
+});
+
+test('a hypothetical wrapper does not launder a real claim', () => {
+  // The generosity above must not become a loophole: an actual assertion in its
+  // own clause still blocks even when a nearby clause is hypothetical.
+  const result = verifyClaims(profile, [
+    'If you need cloud, that is a gap. I have three years of production Kubernetes experience.',
+  ]);
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.some((v) => /Kubernetes/.test(v.detail)));
+});

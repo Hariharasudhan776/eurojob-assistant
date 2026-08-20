@@ -328,12 +328,24 @@ function scoreLanguage(profile: CandidateProfile, required: string[]): { compone
     return { component: { score: 100, weight: WEIGHTS.language, reasons }, blockers };
   }
 
-  // English-only is the realistic case for this profile, so a hard local-language
-  // requirement is a blocker, not a rounding error.
+  // ANY unmet required language is a blocker, not a deduction.
+  //
+  // The earlier version only blocked when English was also unmet, reasoning
+  // that an English-speaking candidate could still get by. A real posting
+  // disproved that: "Du kommunizierst sicher auf Deutsch und Englisch (mind.
+  // C1)" requires BOTH at C1, and the job scored 81% and was recommended to a
+  // candidate who speaks no German. The AI summary caught it and said SKIP.
+  //
+  // Detection only fires on genuine requirement sentences, so "German is a
+  // plus" does not reach here. Given that, an unmet requirement means rejection,
+  // and saying so is more useful than a slightly lower score.
   const englishMet = met.some((l) => l.toLowerCase() === 'english');
-  const score = englishMet ? 55 : 25;
+  const score = englishMet ? 45 : 20;
   reasons.push(`Requires ${unmet.join(', ')}, which the profile does not list.`);
-  if (!englishMet) blockers.push(`Requires ${unmet.join(', ')} and does not appear to accept English.`);
+  blockers.push(
+    `Requires ${unmet.join(', ')}, which the candidate does not speak.` +
+      (englishMet ? ' English is also required and is covered, but both are stated as requirements.' : '')
+  );
 
   return { component: { score, weight: WEIGHTS.language, reasons }, blockers };
 }

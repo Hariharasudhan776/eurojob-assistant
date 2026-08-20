@@ -159,36 +159,79 @@ export function detectRelocationSupport(text: string): Tristate {
   return 'not_specified';
 }
 
-const LANGUAGE_PATTERNS: { language: string; patterns: RegExp[] }[] = [
-  { language: 'English', patterns: [/\benglish\b/i] },
-  { language: 'German', patterns: [/\bgerman\b/i, /\bdeutsch\b/i] },
-  { language: 'Dutch', patterns: [/\bdutch\b/i, /\bnederlands\b/i] },
-  { language: 'French', patterns: [/\bfrench\b/i, /\bfrançais\b/i] },
-  { language: 'Swedish', patterns: [/\bswedish\b/i, /\bsvenska\b/i] },
-  { language: 'Danish', patterns: [/\bdanish\b/i, /\bdansk\b/i] },
-  { language: 'Norwegian', patterns: [/\bnorwegian\b/i, /\bnorsk\b/i] },
-  { language: 'Finnish', patterns: [/\bfinnish\b/i, /\bsuomi\b/i] },
-  { language: 'Italian', patterns: [/\bitalian\b/i, /\bitaliano\b/i] },
-  { language: 'Spanish', patterns: [/\bspanish\b/i, /\bespañol\b/i] },
-  { language: 'Polish', patterns: [/\bpolish\b/i, /\bpolski\b/i] },
-  { language: 'Portuguese', patterns: [/\bportuguese\b/i] },
-];
+/**
+ * Sentence splitting that survives European abbreviations.
+ *
+ * Naive splitting on "." separates "(mind." from "C1)" in the very common German
+ * construction "mind. C1", which loses the requirement level. Same problem with
+ * bzw., z.B., ca., u.a., ggf., evtl., and Dutch/French equivalents.
+ */
+export function splitSentences(text: string): string[] {
+  const ABBREVIATIONS = /\b(?:mind|max|ca|bzw|zzgl|inkl|evtl|ggf|u\.a|z\.B|d\.h|o\.g|s\.o|nr|bzgl|etc|vgl|resp|env|p\.ex)\.$/i;
+  const parts: string[] = [];
+  let current = '';
+
+  for (const chunk of text.split(/(?<=[.!?\n])/)) {
+    current += chunk;
+    // Keep accumulating while the fragment ends in a known abbreviation.
+    if (ABBREVIATIONS.test(current.trimEnd())) continue;
+    parts.push(current);
+    current = '';
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
 
 /**
- * Languages the posting *requires*. Only sentences that look like a requirement
- * are considered -- "our team speaks German" is not a requirement, and counting
- * it would wrongly exclude English-only roles.
+ * Languages the posting *requires*.
+ *
+ * Two things make this harder than it looks, and both were found on real
+ * postings rather than imagined:
+ *
+ *  1. **German ads state the requirement in German.** "Du kommunizierst sicher
+ *     auf Deutsch und Englisch (mind. C1)" is a hard C1 German requirement, and
+ *     an English-only keyword list misses it completely. For a search aimed at
+ *     Germany, Austria and Switzerland that is not an edge case, it is most of
+ *     the market.
+ *
+ *  2. **Mentioning a language is not requiring it.** "Deutschland Ticket" and
+ *     "our team speaks German" must not count, or every German posting would be
+ *     excluded for a candidate who speaks only English. So a language only
+ *     counts when its sentence also carries a requirement marker.
  */
+const REQUIREMENT_MARKERS = [
+  // English
+  /\b(?:require[ds]?|requirement|must|need(?:ed)?|essential|mandatory|fluent|fluency|proficien\w*|native|speaker|mother\s*tongue|command of|level|business[- ]level|working knowledge)\b/i,
+  /\b[abc][12]\b/i,
+  // German
+  /\b(?:erforderlich|voraussetzung|vorausgesetzt|verhandlungssicher|fließend|fliessend|sicher(?:e|es|em)?\s+(?:auf|in)|kenntnisse|sprachkenntnisse|beherrsch\w*|muttersprach\w*|mindestens|mind\.|niveau|benötigt|benoetigt|kommunizierst|kommunizieren|zwingend)\b/i,
+  // Dutch / French
+  /\b(?:vereist|noodzakelijk|vloeiend|beheersing|verplicht)\b/i,
+  /\b(?:exig[ée]|obligatoire|courant|ma[îi]trise|requis)\b/i,
+];
+
+const LANGUAGE_PATTERNS: { language: string; patterns: RegExp[] }[] = [
+  { language: 'English', patterns: [/\benglish\b/i, /\benglisch\b/i, /\bengels\b/i, /\banglais\b/i] },
+  // \bdeutsch\b deliberately does not match "Deutschland" or "deutschlandweit",
+  // which appear in benefits sections of almost every German posting.
+  { language: 'German', patterns: [/\bgerman\b/i, /\bdeutsch(?:e|es|en|er)?\b/i, /\bduits\b/i, /\ballemand\b/i] },
+  { language: 'Dutch', patterns: [/\bdutch\b/i, /\bnederlands\b/i, /\bniederl[äa]ndisch\b/i] },
+  { language: 'French', patterns: [/\bfrench\b/i, /\bfran[çc]ais\b/i, /\bfranz[öo]sisch\b/i] },
+  { language: 'Swedish', patterns: [/\bswedish\b/i, /\bsvenska\b/i, /\bschwedisch\b/i] },
+  { language: 'Danish', patterns: [/\bdanish\b/i, /\bdansk\b/i, /\bd[äa]nisch\b/i] },
+  { language: 'Norwegian', patterns: [/\bnorwegian\b/i, /\bnorsk\b/i, /\bnorwegisch\b/i] },
+  { language: 'Finnish', patterns: [/\bfinnish\b/i, /\bsuomi\b/i, /\bfinnisch\b/i] },
+  { language: 'Italian', patterns: [/\bitalian\b/i, /\bitaliano\b/i, /\bitalienisch\b/i] },
+  { language: 'Spanish', patterns: [/\bspanish\b/i, /\bespa[ñn]ol\b/i, /\bspanisch\b/i] },
+  { language: 'Polish', patterns: [/\bpolish\b/i, /\bpolski\b/i, /\bpolnisch\b/i] },
+  { language: 'Portuguese', patterns: [/\bportuguese\b/i, /\bportugu[êe]s\b/i] },
+];
+
 export function detectRequiredLanguages(text: string): string[] {
   const found = new Set<string>();
-  const sentences = text.split(/(?<=[.!?\n])/);
 
-  for (const sentence of sentences) {
-    const looksRequired =
-      /\b(?:require|required|requirement|must|need|fluent|fluency|proficien|native|speaker|mother\s*tongue|command of|level|b1|b2|c1|c2)\b/i.test(
-        sentence
-      );
-    if (!looksRequired) continue;
+  for (const sentence of splitSentences(text)) {
+    if (!REQUIREMENT_MARKERS.some((marker) => marker.test(sentence))) continue;
     for (const { language, patterns } of LANGUAGE_PATTERNS) {
       if (patterns.some((p) => p.test(sentence))) found.add(language);
     }
@@ -196,11 +239,6 @@ export function detectRequiredLanguages(text: string): string[] {
   return [...found];
 }
 
-/**
- * Minimum years of experience. Takes the SMALLEST stated figure: postings often
- * list a range ("3-5 years") or several numbers across sections, and the lowest
- * is the actual bar to clear.
- */
 export function detectMinYears(text: string): number | null {
   const found: number[] = [];
   const patterns = [

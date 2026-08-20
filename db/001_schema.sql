@@ -117,6 +117,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     salary_max        integer,
     salary_currency   text,
     description       text        NOT NULL,
+    -- False when the source only returned a snippet (Adzuna truncates to 500
+    -- characters). The upsert refuses to let a snippet overwrite a full posting.
+    description_complete boolean  NOT NULL DEFAULT true,
     -- Parsed requirements. NULL means "not yet parsed"; an empty array means
     -- "parsed, and the posting genuinely did not say". Those are different
     -- facts and the UI must not conflate them.

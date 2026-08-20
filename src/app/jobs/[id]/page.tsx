@@ -1,0 +1,238 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { getJob } from '@/lib/db/repo';
+import { currentUserId } from '@/lib/session';
+import { Bar, Card, Pill, RecommendationPill, ScoreBadge, SponsorshipPill } from '@/components/ui';
+import { JobActions } from '@/components/JobActions';
+
+export const dynamic = 'force-dynamic';
+
+interface Breakdown {
+  components?: Record<string, { score: number; reasons: string[] }>;
+  requirements?: {
+    required?: { display: string; satisfiedBy: string | null; weight: number; evidence: string | null }[];
+    minYears?: number | null;
+    education?: string | null;
+    languages?: string[];
+  };
+  relevance?: { discipline?: string; outOfScope?: boolean; reasons?: string[] };
+  confidence?: { level: string; reason: string | null };
+  blockers?: string[];
+}
+
+interface AiSummary {
+  verdict?: string;
+  strengths?: string[];
+  concerns?: string[];
+  preparation?: string[];
+  applyPriority?: string;
+  violations?: { severity: string; detail: string }[];
+  safe?: boolean;
+}
+
+const COMPONENT_LABELS: Record<string, string> = {
+  technical: 'Technical skills',
+  experience: 'Experience',
+  education: 'Education',
+  location: 'Location & visa',
+  language: 'Language',
+  aiTools: 'AI / modern tools',
+};
+
+export default async function JobDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const jobId = Number(id);
+  if (!Number.isInteger(jobId)) notFound();
+
+  const userId = await currentUserId();
+  const job = await getJob(userId, jobId);
+  if (!job) notFound();
+
+  const breakdown = (job.breakdown ?? {}) as Breakdown;
+  const ai = (job.ai_summary ?? null) as AiSummary | null;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold">{job.title}</h1>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">
+              {job.company}
+              {job.city ? ` — ${job.city}` : ''}
+              {job.country ? `, ${job.country}` : ''} · {job.remote}
+              {job.employment_type ? ` · ${job.employment_type}` : ''}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <RecommendationPill value={job.recommendation} />
+              <SponsorshipPill value={job.visa_sponsorship} />
+              {job.relocation_support === 'yes' && <Pill tone="good">relocation support</Pill>}
+              {job.languages?.length ? <Pill>needs {job.languages.join(', ')}</Pill> : <Pill>no language stated</Pill>}
+              {job.salary_min || job.salary_max ? (
+                <Pill tone="accent">
+                  {job.salary_min ?? '?'}–{job.salary_max ?? '?'} {job.salary_currency ?? ''}
+                </Pill>
+              ) : null}
+              <Pill>from {job.source_slug}</Pill>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <ScoreBadge score={job.overall} />
+            <a href={job.url} target="_blank" rel="noreferrer"
+               className="rounded bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)]">
+              Open original posting
+            </a>
+          </div>
+        </div>
+      </Card>
+
+      {breakdown.confidence?.level === 'low' && (
+        <Card>
+          <p className="text-sm text-[var(--color-warn)]">
+            Low confidence: {breakdown.confidence.reason}
+          </p>
+        </Card>
+      )}
+
+      {breakdown.blockers?.length ? (
+        <Card title="Blockers">
+          <ul className="space-y-1.5">
+            {breakdown.blockers.map((blocker, i) => (
+              <li key={i} className="text-sm text-[var(--color-bad)]">{blocker}</li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Why this score">
+          <div className="space-y-2">
+            {Object.entries(breakdown.components ?? {}).map(([key, component]) => (
+              <Bar key={key} label={COMPONENT_LABELS[key] ?? key} score={component.score} />
+            ))}
+          </div>
+          <div className="mt-4 space-y-3">
+            {Object.entries(breakdown.components ?? {}).map(([key, component]) => (
+              <div key={key}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                  {COMPONENT_LABELS[key] ?? key}
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {component.reasons.map((reason, i) => (
+                    <li key={i} className="text-xs text-[var(--color-fg)]/85">{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <Card title="Skills">
+            <SkillList label="Strong matches" tone="good" items={job.strong_matches ?? []} />
+            <SkillList label="Transferable" tone="warn" items={job.partial_matches ?? []} />
+            <SkillList
+              label="Missing"
+              tone="bad"
+              items={job.missing_skills ?? []}
+              empty={job.description_complete ? 'None found.' : 'Unknown — this source supplies only an extract.'}
+            />
+          </Card>
+
+          <Card title="Requirements found in the posting">
+            <dl className="space-y-1 text-sm">
+              <Row label="Minimum experience" value={breakdown.requirements?.minYears ? `${breakdown.requirements.minYears} years` : 'not stated'} />
+              <Row label="Education" value={breakdown.requirements?.education ?? 'not stated'} />
+              <Row label="Languages" value={breakdown.requirements?.languages?.join(', ') || 'not stated'} />
+              <Row label="Role type" value={breakdown.relevance?.discipline ?? 'unknown'} />
+            </dl>
+          </Card>
+        </div>
+      </div>
+
+      {ai ? (
+        <Card title={`AI verdict${ai.applyPriority ? ` — apply ${ai.applyPriority}` : ''}`}>
+          {ai.verdict && <p className="text-sm">{ai.verdict}</p>}
+          {ai.strengths?.length ? (
+            <>
+              <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-good)]">Strengths</p>
+              <ul className="mt-1 space-y-1">
+                {ai.strengths.map((s, i) => <li key={i} className="text-sm text-[var(--color-fg)]/85">{s}</li>)}
+              </ul>
+            </>
+          ) : null}
+          {ai.concerns?.length ? (
+            <>
+              <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-warn)]">Concerns</p>
+              <ul className="mt-1 space-y-1">
+                {ai.concerns.map((c, i) => <li key={i} className="text-sm text-[var(--color-fg)]/85">{c}</li>)}
+              </ul>
+            </>
+          ) : null}
+          {ai.preparation?.length ? (
+            <>
+              <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-accent)]">Before applying</p>
+              <ul className="mt-1 space-y-1">
+                {ai.preparation.map((p, i) => <li key={i} className="text-sm text-[var(--color-fg)]/85">{p}</li>)}
+              </ul>
+            </>
+          ) : null}
+          {ai.violations?.length ? (
+            <p className="mt-3 text-xs text-[var(--color-warn)]">
+              Verification flagged {ai.violations.length} item(s): {ai.violations.map((v) => v.detail).join(' ')}
+            </p>
+          ) : (
+            <p className="mt-3 text-xs text-[var(--color-good)]">
+              Verified against your profile — no unevidenced claims.
+            </p>
+          )}
+        </Card>
+      ) : (
+        <Card title="AI verdict">
+          <p className="text-sm text-[var(--color-muted)]">
+            Not generated yet. Everything above is deterministic and free. Use the buttons below, or run{' '}
+            <code className="text-[var(--color-fg)]">npm run sync -- --explain 5</code>.
+          </p>
+        </Card>
+      )}
+
+      <JobActions jobId={job.id} currentStage={job.stage} notes={job.notes} />
+
+      <Card title="Original description">
+        <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[var(--color-fg)]/80">
+          {job.description}
+        </pre>
+        {!job.description_complete && (
+          <p className="mt-2 text-xs text-[var(--color-warn)]">
+            This is the first 500 characters only. Open the original posting for the full text.
+          </p>
+        )}
+      </Card>
+
+      <Link href="/jobs" className="inline-block text-sm text-[var(--color-accent)]">← back to jobs</Link>
+    </div>
+  );
+}
+
+function SkillList({ label, tone, items, empty = 'None.' }: { label: string; tone: 'good' | 'warn' | 'bad'; items: string[]; empty?: string }) {
+  const colour = { good: 'var(--color-good)', warn: 'var(--color-warn)', bad: 'var(--color-bad)' }[tone];
+  return (
+    <div className="mb-3 last:mb-0">
+      <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: colour }}>{label}</p>
+      {items.length === 0 ? (
+        <p className="mt-1 text-xs text-[var(--color-muted)]">{empty}</p>
+      ) : (
+        <p className="mt-1 text-sm">{items.join(' · ')}</p>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <dt className="text-[var(--color-muted)]">{label}</dt>
+      <dd className="text-right">{value}</dd>
+    </div>
+  );
+}

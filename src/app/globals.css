@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0d1117;
+  --color-panel: #161b22;
+  --color-line: #2a313c;
+  --color-fg: #e6edf3;
+  --color-muted: #8b949e;
+  --color-accent: #4493f8;
+  --color-good: #3fb950;
+  --color-warn: #d29922;
+  --color-bad: #f85149;
+}
+
+html, body { background: var(--color-ink); color: var(--color-fg); }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* Money and scores are compared vertically, so digits must not shift width. */
+.tnum { font-variant-numeric: tabular-nums; }

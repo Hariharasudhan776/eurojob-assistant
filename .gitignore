@@ -8,3 +8,5 @@ dist/
 data/generated/
 data/ai-cache/
 data/ai-spend.json
+tsconfig.tsbuildinfo
+next-env.d.ts

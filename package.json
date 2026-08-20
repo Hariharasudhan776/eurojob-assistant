@@ -13,7 +13,8 @@
     "jobs:match": "node --experimental-strip-types scripts/match.ts",
     "test": "node --test --experimental-strip-types \"test/*.test.ts\"",
     "test:all": "node --test --experimental-strip-types \"test/*.test.ts\" \"test/integration/*.test.ts\"",
-    "jobs:analyse": "node --experimental-strip-types scripts/analyse.ts"
+    "jobs:analyse": "node --experimental-strip-types scripts/analyse.ts",
+    "sync": "node --experimental-strip-types scripts/sync.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -39,5 +40,10 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2"
   },
-  "type": "module"
+  "type": "module",
+  "description": "Personal European job-search assistant: collects real postings, scores them against your resume with explainable arithmetic, and writes tailored resumes and cover letters that cannot claim anything unevidenced.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  }
 }

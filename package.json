@@ -12,10 +12,11 @@
     "jobs:collect": "node --experimental-strip-types scripts/collect.ts",
     "jobs:match": "node --experimental-strip-types scripts/match.ts",
     "test": "node --test --experimental-strip-types \"test/*.test.ts\"",
-    "test:all": "node --test --experimental-strip-types \"test/*.test.ts\" \"test/integration/*.test.ts\""
+    "test:all": "node --test --experimental-strip-types \"test/*.test.ts\" \"test/integration/*.test.ts\"",
+    "jobs:analyse": "node --experimental-strip-types scripts/analyse.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.68.0",
+    "@anthropic-ai/sdk": "^0.120.0",
     "bcryptjs": "^2.4.3",
     "docx": "^9.0.0",
     "dotenv": "^16.4.5",

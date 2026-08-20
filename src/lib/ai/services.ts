@@ -1,0 +1,139 @@
+import type { CandidateProfile } from '../resume/profile.ts';
+import type { NormalisedJob } from '../jobs/types.ts';
+import type { MatchResult } from '../match/score.ts';
+import { AiClient, hashKey } from './client.ts';
+import { CoverLetter, MatchSummary, TailoredResume } from './schemas.ts';
+import {
+  COVER_LETTER_SYSTEM,
+  MATCH_SUMMARY_SYSTEM,
+  RESUME_TAILOR_SYSTEM,
+  coverLetterPrompt,
+  matchSummaryPrompt,
+  profileContext,
+  resumeTailorPrompt,
+  type Tone,
+} from './prompts.ts';
+import { verifyClaims, verifyProvenance, type Violation } from './verify.ts';
+
+/**
+ * The AI services, one per pipeline stage (spec §18).
+ *
+ * Each is small and independent so it can be improved without touching the
+ * others, and each returns its verification result alongside its output. The
+ * caller decides what to do with a violation; nothing here silently ships text
+ * that failed a check.
+ *
+ * Cache keys are content-addressed on everything that changes the answer: the
+ * job's text, the profile version, and (for letters) the tone. Two job boards
+ * carrying the same posting therefore cost one call, not two.
+ */
+
+export interface Verified<T> {
+  output: T;
+  violations: Violation[];
+  /** False when a blocking violation was found. The caller must not ship it. */
+  safe: boolean;
+}
+
+function jobFingerprint(job: NormalisedJob): string {
+  // Title and company matter because the same description under a different
+  // title is a different job; description length guards against a truncated
+  // copy colliding with a complete one.
+  return hashKey(job.title, job.company, String(job.description.length), job.description.slice(0, 3000));
+}
+
+export class AiServices {
+  private readonly ai: AiClient;
+  private readonly profile: CandidateProfile;
+
+  constructor(ai: AiClient, profile: CandidateProfile) {
+    this.ai = ai;
+    this.profile = profile;
+  }
+
+  private get stableContext(): string {
+    return profileContext(this.profile);
+  }
+
+  /** Plain-English explanation of an already-computed match. */
+  async explainMatch(job: NormalisedJob, match: MatchResult): Promise<Verified<MatchSummary>> {
+    const output = await this.ai.complete({
+      kind: 'match-summary',
+      // The score is part of the key: if the matcher changes its mind, the
+      // explanation must be regenerated rather than served stale.
+      cacheKey: hashKey(jobFingerprint(job), this.profile.version, match.overall, match.recommendation),
+      system: MATCH_SUMMARY_SYSTEM,
+      stableContext: this.stableContext,
+      prompt: matchSummaryPrompt(job, match),
+      schema: MatchSummary,
+      maxTokens: 2048,
+      effort: 'low',
+    });
+
+    const check = verifyClaims(this.profile, [
+      output.verdict,
+      ...output.strengths,
+      ...output.concerns,
+      ...output.preparation,
+    ]);
+    return { output, violations: check.violations, safe: check.ok };
+  }
+
+  async tailorResume(job: NormalisedJob, match: MatchResult): Promise<Verified<TailoredResume>> {
+    const output = await this.ai.complete({
+      kind: 'resume-tailor',
+      cacheKey: hashKey(jobFingerprint(job), this.profile.version),
+      system: RESUME_TAILOR_SYSTEM,
+      stableContext: this.stableContext,
+      prompt: resumeTailorPrompt(job, match),
+      schema: TailoredResume,
+      maxTokens: 8192,
+      effort: 'high',
+    });
+
+    const texts = [output.summary, ...output.bullets.flatMap((b) => b.bullets)];
+    const check = verifyClaims(this.profile, texts);
+    const provenanceViolations = verifyProvenance(this.profile, output.provenance);
+
+    // A skill order that names something not in the profile is an addition
+    // dressed up as a reordering, so it is checked separately.
+    const known = new Set(this.profile.skills.map((s) => s.name.toLowerCase()));
+    const invented = output.skillOrder.filter((name) => !known.has(name.toLowerCase()));
+    const skillViolations: Violation[] = invented.map((name) => ({
+      severity: 'blocking' as const,
+      kind: 'unevidenced_skill' as const,
+      detail: `"${name}" was placed in the skills list but is not a skill in the profile.`,
+      offendingText: name,
+    }));
+
+    const violations = [...check.violations, ...provenanceViolations, ...skillViolations];
+    return { output, violations, safe: violations.every((v) => v.severity !== 'blocking') };
+  }
+
+  async writeCoverLetter(job: NormalisedJob, match: MatchResult, tone: Tone): Promise<Verified<CoverLetter>> {
+    const output = await this.ai.complete({
+      kind: `cover-letter`,
+      cacheKey: hashKey(jobFingerprint(job), this.profile.version, tone),
+      system: COVER_LETTER_SYSTEM,
+      stableContext: this.stableContext,
+      prompt: coverLetterPrompt(job, match, tone),
+      schema: CoverLetter,
+      maxTokens: 4096,
+      effort: 'medium',
+    });
+
+    const check = verifyClaims(this.profile, [...output.paragraphs, ...output.claimsMade, output.subjectLine]);
+    return { output, violations: check.violations, safe: check.ok };
+  }
+}
+
+/**
+ * Which jobs are worth spending a model call on.
+ *
+ * Below the threshold the deterministic score is already enough to say "no", and
+ * paying to have that explained in prose is waste. Out-of-scope postings are
+ * excluded outright: there is nothing useful to say about a nursing vacancy.
+ */
+export function shouldAnalyse(match: MatchResult, minScore = Number(process.env.AI_MIN_SCORE ?? 70)): boolean {
+  return !match.relevance.outOfScope && match.overall >= minScore;
+}

@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const profile = CandidateProfile.parse(
-  JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v2.json'), 'utf8'))
+  JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v3.json'), 'utf8'))
 );
 
 const COUNTRIES = ['DE', 'NL', 'SE', 'IE', 'AT', 'CH'];

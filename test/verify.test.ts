@@ -147,3 +147,47 @@ test('a hypothetical wrapper does not launder a real claim', () => {
   assert.equal(result.ok, false);
   assert.ok(result.violations.some((v) => /Kubernetes/.test(v.detail)));
 });
+
+test('REGRESSION: a colon does not sever a label from its own denial', () => {
+  // Verbatim output from the summary stage. Splitting clauses on ':' left
+  // "Cloud platforms (AWS/GCP):" as a fragment with no negation in it, so six
+  // blocking violations were raised against text that is entirely honest.
+  const honest = [
+    'Cloud platforms (AWS/GCP): the role requires hands-on experience with one of these; your profile shows none.',
+    "NoSQL databases: the posting lists 'familiarity with NoSQL solutions' as a requirement. Your profile contains no MongoDB, Cassandra, Redis, or other NoSQL work.",
+    'Terraform/Puppet: listed as a plus. Your profile shows no infrastructure-as-code experience.',
+  ];
+  const result = verifyClaims(profile, honest);
+  assert.equal(
+    result.ok,
+    true,
+    `blocked honest gap analysis: ${JSON.stringify(result.violations.map((v) => v.detail))}`
+  );
+});
+
+test('a sentence boundary still separates a denial from a claim', () => {
+  // The colon fix must not make negation leak across whole sentences.
+  const result = verifyClaims(profile, [
+    'Cloud: your profile shows none. I have four years of production Kubernetes experience.',
+  ]);
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.some((v) => /Kubernetes/.test(v.detail)));
+});
+
+test('quoting the employer is not claiming the skill', () => {
+  const result = verifyClaims(profile, [
+    "The posting lists 'familiarity with NoSQL solutions' as a requirement.",
+    'The role requires hands-on Kubernetes and Terraform.',
+    'Docker is listed as desirable.',
+    'They are looking for someone with AWS certification.',
+  ]);
+  assert.equal(result.ok, true, `blocked a quote of the employer: ${JSON.stringify(result.violations.map((v) => v.detail))}`);
+});
+
+test('the employer exemption does not launder a candidate claim', () => {
+  const result = verifyClaims(profile, [
+    'The role requires Kubernetes. I have run Kubernetes in production for four years.',
+  ]);
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.some((v) => /Kubernetes/.test(v.detail)));
+});

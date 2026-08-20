@@ -15,8 +15,10 @@ import { dirname, join } from 'node:path';
 import { collect } from '../src/lib/jobs/registry.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import { scoreJob } from '../src/lib/match/score.ts';
-import { AiClient } from '../src/lib/ai/client.ts';
+import { AiClient, STAGE_MODELS } from '../src/lib/ai/client.ts';
 import { AiServices, shouldAnalyse } from '../src/lib/ai/services.ts';
+import { FileCache } from '../src/lib/ai/cache.ts';
+import { BudgetGuard, BudgetExceededError, SpendLedger, defaultLedgerPath, DEFAULT_LIMITS } from '../src/lib/ai/budget.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const TARGET_COUNTRIES = ['DE', 'NL', 'SE', 'FI', 'DK', 'NO', 'IE', 'BE', 'AT', 'FR', 'CH', 'LU', 'PL'];
@@ -28,7 +30,19 @@ const TARGET_TITLES = [
 ];
 
 async function main() {
-  const wanted = Number(process.argv[2] ?? 3);
+  const args = process.argv.slice(2);
+  const wanted = Number(args.find((a) => /^\d+$/.test(a)) ?? 3);
+  /**
+   * Documents are opt-in.
+   *
+   * Measured per job: explanation $0.009, cover letter $0.053, tailored resume
+   * $0.157. Generating all three for everything that clears the score threshold
+   * spends 24x the triage cost on jobs the explanation may well tell you to
+   * skip -- and on a real run one of the top three came back SKIP. So the
+   * default is explanations only, and documents are produced for the jobs you
+   * have actually decided to apply to.
+   */
+  const withDocuments = args.includes('--full');
 
   if (!AiClient.isConfigured()) {
     console.error('ANTHROPIC_API_KEY is not set. Scoring works without it; the AI stages do not.');
@@ -60,11 +74,30 @@ async function main() {
   console.log(`${eligible.length} of ${scored.length} jobs are above the AI threshold (AI_MIN_SCORE=${process.env.AI_MIN_SCORE ?? 70})`);
   console.log(`analysing the top ${Math.min(wanted, eligible.length)}\n`);
 
-  const ai = new AiClient();
+  const root = join(here, '..');
+  const cache = new FileCache(join(root, 'data', 'ai-cache'));
+  const ledger = new SpendLedger(defaultLedgerPath(root));
+  const guard = new BudgetGuard(ledger);
+
+  const cached = cache.summary();
+  console.log(`cache: ${cached.entries} entries on disk (${(cached.bytes / 1024).toFixed(0)} kB)`);
+  console.log(
+    `limits: $${DEFAULT_LIMITS.perRunUsd.toFixed(2)}/run, $${DEFAULT_LIMITS.dailyUsd.toFixed(2)}/day ` +
+      `(spent in last 24h: $${ledger.spentLast24h().toFixed(4)})`
+  );
+  console.log(`models: summary=${STAGE_MODELS['match-summary']} letter=${STAGE_MODELS['cover-letter']} resume=${STAGE_MODELS['resume-tailor']}`);
+  console.log(
+    withDocuments
+      ? 'mode: --full (explanation + cover letter + tailored resume, about $0.22 per job)\n'
+      : 'mode: triage only (explanations, about $0.009 per job). Pass --full for documents.\n'
+  );
+
+  const ai = new AiClient(cache, { budget: guard });
   const services = new AiServices(ai, profile);
   const results: unknown[] = [];
 
   for (const { job, match } of eligible.slice(0, wanted)) {
+    try {
     console.log('='.repeat(78));
     console.log(`${match.overall}%  ${job.title}`);
     console.log(`       ${job.company} — ${[job.city, job.country].filter(Boolean).join(', ')} (${job.remote})`);
@@ -86,6 +119,12 @@ async function main() {
     console.log(`\nverification: ${summary.safe ? 'clean' : `${summary.violations.length} violation(s)`}`);
     for (const v of summary.violations) console.log(`  [${v.severity}] ${v.detail}`);
 
+    if (!withDocuments) {
+      console.log('\n(cover letter and tailored resume skipped: pass --full to generate them)');
+      results.push({ job, match, summary });
+      continue;
+    }
+
     const letter = await services.writeCoverLetter(job, match, 'technical');
     console.log(`\nCOVER LETTER (technical tone) — subject: ${letter.output.subjectLine}`);
     console.log(`  ${letter.output.greeting}`);
@@ -103,6 +142,15 @@ async function main() {
     console.log();
 
     results.push({ job, match, summary, letter, resume });
+    } catch (err) {
+      if (err instanceof BudgetExceededError) {
+        console.log(`
+STOPPED: ${err.message}`);
+        console.log('Jobs already analysed are kept and cached; re-running resumes from here for free.');
+        break;
+      }
+      throw err;
+    }
   }
 
   console.log('='.repeat(78));
@@ -110,7 +158,14 @@ async function main() {
   console.log(`AI usage: ${calls} calls, ${cacheHits} cache hits, ${schemaRetries} schema retries`);
   console.log(`  input ${usage.inputTokens} | output ${usage.outputTokens}`);
   console.log(`  prompt cache: ${usage.cacheReadTokens} read, ${usage.cacheCreationTokens} written`);
-  console.log(`  estimated cost: $${estimatedCostUsd.toFixed(4)} on ${ai.model}`);
+  console.log(`  estimated cost this run: $${estimatedCostUsd.toFixed(4)}`);
+  console.log(`  cache: ${cache.stats.hits} hits, ${cache.stats.misses} misses`);
+  console.log(`
+spend in the last 24h, by stage:`);
+  for (const row of ledger.breakdown()) {
+    console.log(`  ${row.kind.padEnd(16)} ${String(row.calls).padStart(3)} calls  $${row.usd.toFixed(4)}`);
+  }
+  console.log(`  ${'TOTAL'.padEnd(16)}     $${ledger.spentLast24h().toFixed(4)} of $${DEFAULT_LIMITS.dailyUsd.toFixed(2)} daily cap`);
 
   mkdirSync(join(here, '..', 'data', 'generated'), { recursive: true });
   const out = join(here, '..', 'data', 'generated', 'analysis.json');

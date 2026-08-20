@@ -96,7 +96,16 @@ export class AiServices {
       stableContext: this.stableContext,
       prompt: resumeTailorPrompt(job, match),
       schema: TailoredResume,
-      maxTokens: 8192,
+      // 16000. Both 5000 and 8192 truncated the JSON mid-object.
+      //
+      // The output is genuinely large -- reordered bullets for every role plus a
+      // provenance entry per rewrite -- and adaptive thinking tokens count
+      // against this same budget, which is the part that caught me out.
+      //
+      // Measured cost of this stage is $0.157 per job on Sonnet 5 -- by far the
+      // most expensive stage, and the reason it is generated on demand rather
+      // than for every job that clears the score threshold.
+      maxTokens: 16000,
       effort: 'high',
     });
 

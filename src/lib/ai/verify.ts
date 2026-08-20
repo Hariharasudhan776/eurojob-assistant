@@ -94,6 +94,29 @@ export function isHypotheticalContext(clause: string): boolean {
 }
 
 /**
+ * Is the clause describing what the EMPLOYER wants, rather than what the
+ * candidate has?
+ *
+ * "NoSQL databases: the posting lists 'familiarity with NoSQL solutions' as a
+ * requirement" mentions a technology while attributing it entirely to the job
+ * advert. Nothing is being claimed on the candidate's behalf, so flagging it
+ * reports the app for correctly quoting the employer.
+ *
+ * This is a third category, distinct from negation and from hypotheticals: the
+ * subject of the sentence is the posting, not the person.
+ */
+export function isAboutTheEmployer(clause: string): boolean {
+  const t = clause.toLowerCase();
+  return (
+    /\b(?:the\s+)?(?:posting|advert|advertisement|listing|role|job|employer|company|team|they)\s+(?:explicitly\s+)?(?:lists?|requires?|asks?|states?|mentions?|wants?|specifies|expects?|covers?|includes?|needs?)\b/.test(t) ||
+    /\b(?:is|are)\s+(?:a\s+|an\s+)?(?:stated\s+|explicit\s+|hard\s+)?(?:requirement|required|listed|stated|mentioned|essential|mandatory|expected|preferred|desirable)\b/.test(t) ||
+    /\b(?:listed|stated|mentioned|described|flagged)\s+as\b/.test(t) ||
+    /\brequirements?\s+(?:include|includes|are|is|list)\b/.test(t) ||
+    /\basks?\s+for\b|\blooking for\b|\bwould like\b/.test(t)
+  );
+}
+
+/**
  * Names from the profile that must not be read as skills: employers,
  * institutions, and project names. Longest first, so a longer company name is
  * masked before a shorter substring of it.
@@ -116,10 +139,21 @@ function maskProperNouns(text: string, properNouns: string[]): string {
   return masked;
 }
 
-/** Split into clauses, so a negation in one does not excuse a claim in another. */
+/**
+ * Split into clauses, so a negation in one does not excuse a claim in another.
+ *
+ * Colons and semicolons are NOT split points, and that distinction was learned
+ * the hard way. Splitting on ':' severed a label from its own explanation in
+ * "Cloud platforms (AWS/GCP): the role requires this; your profile shows none."
+ * — leaving a fragment that names a technology with no negation in it, and
+ * raising six blocking violations against text that was entirely honest.
+ *
+ * A colon or semicolon continues a thought; only a sentence end or a
+ * contrastive conjunction changes who is being described.
+ */
 function clauses(text: string): string[] {
   return text
-    .split(/(?<=[.!?;:])\s+|\n+|\s+(?:but|while|whereas|although|though|however)\s+/i)
+    .split(/(?<=[.!?])\s+|\n+|\s+(?:but|while|whereas|although|though|however)\s+/i)
     .map((c) => c.trim())
     .filter(Boolean);
 }
@@ -177,7 +211,10 @@ export function verifyClaims(
 
     // 1. Technologies asserted as the candidate's that the profile cannot evidence.
     for (const clause of clauses(text)) {
-      const notAClaim = isNegatedContext(clause) || isHypotheticalContext(clause);
+      // Three ways a technology can appear without being claimed: denied,
+      // hypothetical, or attributed to the employer.
+      const notAClaim =
+        isNegatedContext(clause) || isHypotheticalContext(clause) || isAboutTheEmployer(clause);
       // Proper nouns are masked first. "Meridian" is one of this candidate's
       // actual employers, and the taxonomy's `agile` alias matched inside the
       // company name -- so every honest sentence saying where he worked was

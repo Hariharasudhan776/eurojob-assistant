@@ -6,3 +6,5 @@ out/
 dist/
 *.log
 data/generated/
+data/ai-cache/
+data/ai-spend.json

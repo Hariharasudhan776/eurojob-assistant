@@ -12,11 +12,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { ArbeitnowSource } from '../src/lib/jobs/sources/arbeitnow.ts';
-import { contentHash } from '../src/lib/jobs/parse.ts';
+import { collect } from '../src/lib/jobs/registry.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import { scoreJob } from '../src/lib/match/score.ts';
-import type { NormalisedJob } from '../src/lib/jobs/types.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -42,36 +40,27 @@ const TARGET_TITLES = [
 
 async function main() {
   const profile = CandidateProfile.parse(
-    JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v1.json'), 'utf8'))
+    JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v2.json'), 'utf8'))
   );
   console.log(`profile v${profile.version}: ${profile.name}, ${profile.totalYears}y, ${profile.skills.length} evidenced skills\n`);
 
-  const source = new ArbeitnowSource();
-  console.log(`collecting from ${source.displayName} (no credentials required)...`);
-  const started = Date.now();
-  const { jobs, warnings } = await source.fetch({
+  const { jobs, perSource, duplicatesCollapsed } = await collect({
     countries: TARGET_COUNTRIES,
     titles: TARGET_TITLES,
-    keywords: ['oracle', 'pl/sql', 'plsql', 'postgresql', 'sql', 'erp', 'database'],
+    keywords: ['oracle', 'plsql', 'postgresql', 'sql', 'database', 'erp'],
     postedWithinDays: 30,
     limit: 400,
   });
-  console.log(`  ${jobs.length} jobs in ${((Date.now() - started) / 1000).toFixed(1)}s`);
-  for (const w of warnings) console.log(`  warning: ${w}`);
 
-  // Duplicate detection by content hash (spec §15).
-  const byHash = new Map<string, NormalisedJob>();
-  let duplicates = 0;
-  for (const job of jobs) {
-    const hash = contentHash(job);
-    if (byHash.has(hash)) {
-      duplicates += 1;
-      continue;
-    }
-    byHash.set(hash, job);
+  for (const s of perSource) {
+    const status = s.configured ? `${s.fetched} jobs in ${(s.ms / 1000).toFixed(1)}s` : 'not configured';
+    console.log(`  ${s.slug.padEnd(10)} ${status}`);
+    for (const w of s.warnings) console.log(`             ${w}`);
   }
-  const unique = [...byHash.values()];
-  console.log(`  ${unique.length} unique after dedupe (${duplicates} duplicates collapsed)\n`);
+  const unique = jobs;
+  console.log(`
+  ${unique.length} unique jobs (${duplicatesCollapsed} duplicates collapsed)
+`);
 
   const scored = unique
     .map((job) => ({ job, match: scoreJob(profile, job, { preferredCountries: TARGET_COUNTRIES }) }))

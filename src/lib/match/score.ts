@@ -55,6 +55,12 @@ export interface MatchResult {
   /** Facts that cap the recommendation regardless of the score. */
   blockers: string[];
   relevance: RelevanceVerdict;
+  /**
+   * How much the score can be trusted. 'low' means the source gave only a
+   * snippet, so absent requirements may simply be past the truncation point --
+   * the UI must show this rather than presenting a confident number.
+   */
+  confidence: { level: 'high' | 'low'; reason: string | null };
   requirements: {
     required: SkillVerdict[];
     preferred: SkillVerdict[];
@@ -159,7 +165,7 @@ function judge(requirement: string, skills: Skill[]): SkillVerdict {
   };
 }
 
-function scoreTechnical(required: SkillVerdict[], preferred: SkillVerdict[]): ScoreComponent {
+function scoreTechnical(required: SkillVerdict[], preferred: SkillVerdict[], descriptionComplete: boolean): ScoreComponent {
   const reasons: string[] = [];
 
   if (required.length === 0) {
@@ -178,7 +184,10 @@ function scoreTechnical(required: SkillVerdict[], preferred: SkillVerdict[]): Sc
   // Shrunk, not raw. A posting naming one recognisable skill that the profile
   // happens to have is thin evidence, and a raw ratio would score it 100% --
   // which is how a social-media role once ranked above an Oracle role.
-  let score = shrinkRatio(earned, required.length) * 100;
+  //
+  // A truncated description is shrunk harder still: it is a 500-character
+  // snippet, so both the matches and the gaps it shows are a partial sample.
+  let score = shrinkRatio(earned, required.length, descriptionComplete ? 3 : 6) * 100;
 
   // Preferred skills can lift a score but never rescue a failing one.
   if (preferred.length > 0) {
@@ -197,6 +206,11 @@ function scoreTechnical(required: SkillVerdict[], preferred: SkillVerdict[]): Sc
   }
   if (missing.length) {
     reasons.push(`No evidence in the profile for: ${missing.map((v) => v.display).join(', ')}.`);
+  }
+  if (!descriptionComplete) {
+    reasons.push(
+      'This source returns only the first 500 characters of the posting, so the requirement list is incomplete. Open the original before ruling the job in or out.'
+    );
   }
   return { score: Math.round(score), weight: WEIGHTS.technical, reasons };
 }
@@ -373,7 +387,7 @@ export function scoreJob(profile: CandidateProfile, job: NormalisedJob, options:
   const minYears = detectMinYearsFromJob(job);
   const educationRequired = detectEducationFromJob(job);
 
-  const technical = scoreTechnical(requiredVerdicts, preferredVerdicts);
+  const technical = scoreTechnical(requiredVerdicts, preferredVerdicts, job.descriptionComplete);
   const experience = scoreExperience(profile.totalYears, minYears);
   const education = scoreEducation(profile, educationRequired);
   const locationScored = scoreLocation(profile, job, options.preferredCountries);
@@ -424,12 +438,25 @@ export function scoreJob(profile: CandidateProfile, job: NormalisedJob, options:
     recommendation = 'low';
   }
 
+  const confidence: MatchResult['confidence'] = job.descriptionComplete
+    ? { level: 'high', reason: null }
+    : {
+        level: 'low',
+        reason:
+          'The source provides only a 500-character extract of this posting. Skills it does not mention may still be required.',
+      };
+
   return {
     overall,
     components,
+    confidence,
     strongMatches: requiredVerdicts.filter((v) => v.weight === 1).map((v) => v.display),
     partialMatches: requiredVerdicts.filter((v) => v.weight > 0 && v.weight < 1).map((v) => v.display),
-    missingSkills: requiredVerdicts.filter((v) => v.weight === 0).map((v) => v.display),
+    // Only claimed as a gap when the whole posting was actually read. From a
+    // snippet, "not mentioned" is not "not required".
+    missingSkills: job.descriptionComplete
+      ? requiredVerdicts.filter((v) => v.weight === 0).map((v) => v.display)
+      : [],
     recommendation,
     blockers,
     relevance,

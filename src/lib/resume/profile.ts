@@ -125,6 +125,26 @@ export const CandidateProfile = z.object({
   certifications: z.array(Certification),
   languages: z.array(Language),
   /**
+   * Known employment gaps and the real reason for each.
+   *
+   * Recorded so the cover-letter and interview-prep steps use the candidate's
+   * actual explanation instead of inventing a plausible one. `verified: false`
+   * marks an account that cannot be documented -- which is precisely why it is
+   * NOT presented as employment on the resume.
+   */
+  employmentGaps: z
+    .array(
+      z.object({
+        from: z.string().regex(/^\d{4}-\d{2}$/),
+        to: z.string().regex(/^\d{4}-\d{2}$/),
+        months: z.number().int().positive(),
+        explanation: z.string().min(1),
+        verified: z.boolean(),
+        guidance: z.string(),
+      })
+    )
+    .default([]),
+  /**
    * Work-authorisation facts. Stated by the user, never guessed -- a wrong
    * answer here wastes applications on both sides.
    */

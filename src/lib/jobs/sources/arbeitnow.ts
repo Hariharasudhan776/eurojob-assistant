@@ -163,6 +163,8 @@ export class ArbeitnowSource implements JobSource {
       salaryMax: null,
       salaryCurrency: null,
       description,
+      // Arbeitnow returns the employer's full posting body.
+      descriptionComplete: true,
       languages: detectRequiredLanguages(description),
       visaSponsorship: detectVisaSponsorship(description),
       relocationSupport: detectRelocationSupport(description),

@@ -169,6 +169,18 @@ export const TAXONOMY: TaxonomyEntry[] = [
     related: { 'generative-ai': 0.7 },
   },
   {
+    // Deliberately separate from 'ai-assisted-dev'. Using an AI assistant to
+    // write code and building software that calls an LLM API are different
+    // skills, and employers ask for them in different postings.
+    canonical: 'llm-integration',
+    display: 'LLM application development',
+    category: 'ai',
+    aliases: ['llm integration', 'llm api', 'openai api', 'anthropic api', 'ai integration',
+              'ai agent', 'ai agents', 'agentic', 'rag', 'retrieval augmented generation',
+              'llm application', 'genai application', 'ai application development'],
+    related: { 'generative-ai': 0.7, 'prompt-engineering': 0.7 },
+  },
+  {
     canonical: 'ai-productivity',
     display: 'AI productivity tooling',
     category: 'ai',

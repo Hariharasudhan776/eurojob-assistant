@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const profile = CandidateProfile.parse(
-  JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v1.json'), 'utf8'))
+  JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v2.json'), 'utf8'))
 );
 
 const COUNTRIES = ['DE', 'NL', 'SE', 'IE', 'AT', 'CH'];
@@ -31,6 +31,7 @@ function job(over: Partial<NormalisedJob> = {}): NormalisedJob {
     salaryMax: null,
     salaryCurrency: null,
     description: 'We need Oracle and PL/SQL experience.',
+    descriptionComplete: true,
     languages: [],
     visaSponsorship: 'not_specified',
     relocationSupport: 'not_specified',
@@ -282,4 +283,36 @@ test('every component score stays within 0..100 across varied postings', () => {
       assert.ok(component.reasons.length > 0, `${name} must explain itself`);
     }
   }
+});
+
+// --- truncated descriptions ----------------------------------------------
+
+test('a snippet lowers confidence and does not assert missing skills', () => {
+  const description = ['Requirements:', '- Oracle and PL/SQL', '- Kubernetes'].join('\n');
+
+  const full = scoreJob(profile, job({ description, descriptionComplete: true }), {
+    preferredCountries: COUNTRIES,
+  });
+  const snippet = scoreJob(profile, job({ description, descriptionComplete: false }), {
+    preferredCountries: COUNTRIES,
+  });
+
+  assert.equal(full.confidence.level, 'high');
+  assert.equal(snippet.confidence.level, 'low');
+  assert.ok(snippet.confidence.reason);
+
+  // Kubernetes is genuinely absent from the profile, so a full posting reports
+  // it as a gap. A 500-character extract cannot support that claim.
+  assert.ok(full.missingSkills.includes('Kubernetes'));
+  assert.deepEqual(snippet.missingSkills, [], 'gaps must not be asserted from a snippet');
+
+  // And a snippet must not score higher than the same text read in full.
+  assert.ok(
+    snippet.components.technical.score <= full.components.technical.score,
+    `snippet ${snippet.components.technical.score} should not beat full ${full.components.technical.score}`
+  );
+  assert.ok(
+    snippet.components.technical.reasons.some((r) => /500/.test(r)),
+    'the truncation must be stated in the reasons the user sees'
+  );
 });

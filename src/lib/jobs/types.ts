@@ -31,6 +31,16 @@ export const NormalisedJob = z.object({
   salaryMax: z.number().int().nullable(),
   salaryCurrency: z.string().nullable(),
   description: z.string().min(1),
+  /**
+   * False when the source only returns a snippet.
+   *
+   * Adzuna's search API truncates every description to 500 characters. A
+   * requirement absent from 500 characters is not an absent requirement, so the
+   * matcher must not report confident "missing skills" against a snippet -- it
+   * lowers its confidence instead. Conflating "not mentioned" with "not
+   * required" would produce false rejections of good jobs.
+   */
+  descriptionComplete: z.boolean(),
   languages: z.array(z.string()),
   visaSponsorship: Tristate,
   relocationSupport: Tristate,

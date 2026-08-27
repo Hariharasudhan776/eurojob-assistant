@@ -219,7 +219,13 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'construction-domain', display: 'Construction Project Systems', category: 'domain', aliases: ['construction erp', 'construction industry', 'contracting'] },
   { canonical: 'finance-domain', display: 'Finance (AP/AR, GL)', category: 'domain', aliases: ['accounts payable', 'accounts receivable', 'general ledger', 'financial reporting', 'finance modules'] },
   { canonical: 'cost-reporting', display: 'Cost Reporting & Controlling', category: 'domain', aliases: ['cost report', 'cost control', 'costing', 'project costing'] },
-  { canonical: 'qaqc', display: 'QA/QC Processes', category: 'domain', aliases: ['qa/qc', 'quality assurance', 'quality control'] },
+  // 'quality assurance' deliberately does NOT live here. This entry is the
+  // candidate's CONSTRUCTION quality-control work at Northwind -- quality
+  // checkpoints in a project lifecycle. A software QA posting saying "quality
+  // assurance" means testing software, and crediting it from construction QA/QC
+  // would be the same class of error as crediting ML from AI-tool fluency. The
+  // phrase belongs to `software-testing`, which the candidate does not hold.
+  { canonical: 'qaqc', display: 'QA/QC Processes', category: 'domain', aliases: ['qa/qc', 'quality control', 'quality checkpoints'] },
   { canonical: 'reporting', display: 'Business Reporting', category: 'domain', aliases: ['report development', 'bi reporting', 'operational reporting', 'report builder'] },
   { canonical: 'pharma-domain', display: 'Pharmacy / Pharma systems', category: 'domain', aliases: ['pharmacy', 'pharmaceutical'] },
   { canonical: 'pos', display: 'Point of Sale', category: 'domain', aliases: ['point of sale', 'pos system', 'retail pos'] },
@@ -260,6 +266,33 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'observability', display: 'Observability tooling', category: 'tool', aliases: ['grafana', 'prometheus', 'datadog', 'monitoring and alerting'] },
   { canonical: 'exadata', display: 'Oracle Exadata', category: 'database_admin', aliases: [], related: { 'oracle-dba': 0.3 } },
 
+  // --- analytics, testing and LLM tooling ----------------------------------
+  //
+  // Same reason as the block above: a term the taxonomy cannot see is never
+  // scored, never reported as a gap, and therefore always counted in the
+  // candidate's favour. Before these existed, a QA Engineer posting naming
+  // Selenium, Cypress, regression testing and test automation produced ONE
+  // recognised requirement, and a Prompt Engineer posting demanding RAG,
+  // LangChain, vector databases and fine-tuning produced a gap list of zero.
+  // Both scores were flattering fiction.
+  //
+  // The candidate holds none of these. Adding them lowers some match scores,
+  // which is the point: a score that cannot go down is not a measurement.
+  { canonical: 'bi-tools', display: 'BI & dashboarding', category: 'tool', aliases: ['power bi', 'powerbi', 'tableau', 'looker', 'qlik', 'metabase', 'superset'], related: { reporting: 0.5 } },
+  { canonical: 'pandas', display: 'pandas / numpy', category: 'framework', aliases: ['numpy', 'polars'], related: { python: 0.4 } },
+  { canonical: 'statistics', display: 'Statistical analysis', category: 'ai', aliases: ['statistical analysis', 'a/b testing', 'ab testing', 'hypothesis testing', 'regression analysis'] },
+  { canonical: 'bigquery', display: 'BigQuery', category: 'database', aliases: ['google bigquery'], related: { 'data-warehouse': 0.6 } },
+  { canonical: 'spark', display: 'Apache Spark', category: 'framework', aliases: ['apache spark', 'pyspark'] },
+
+  { canonical: 'test-automation', display: 'Test automation', category: 'tool', aliases: ['selenium', 'cypress', 'playwright', 'automated testing', 'test automation', 'webdriver'] },
+  { canonical: 'software-testing', display: 'Software testing / QA', category: 'soft', aliases: ['software testing', 'manual testing', 'regression testing', 'test cases', 'test case design', 'quality assurance', 'qa engineer', 'unit testing', 'integration testing'] },
+  { canonical: 'performance-testing', display: 'Performance & load testing', category: 'tool', aliases: ['load testing', 'performance testing', 'jmeter', 'k6', 'stress testing'] },
+
+  { canonical: 'rag', display: 'RAG pipelines', category: 'ai', aliases: ['retrieval augmented generation', 'retrieval-augmented generation', 'rag pipeline'], related: { 'llm-integration': 0.5 } },
+  { canonical: 'vector-db', display: 'Vector databases', category: 'database', aliases: ['vector database', 'pinecone', 'weaviate', 'pgvector', 'embeddings store', 'qdrant', 'chroma'] },
+  { canonical: 'langchain', display: 'LangChain', category: 'framework', aliases: ['llamaindex', 'llama index'], related: { 'llm-integration': 0.4 } },
+  { canonical: 'fine-tuning', display: 'Fine-tuning & evaluation', category: 'ai', aliases: ['fine tuning', 'fine-tuning', 'model evaluation', 'evals', 'rlhf'], related: { 'machine-learning': 0.5 } },
+
   // --- os ---
   { canonical: 'linux', display: 'Linux', category: 'os', aliases: ['ubuntu', 'rhel', 'centos', 'unix'] },
   { canonical: 'windows-server', display: 'Windows Server', category: 'os', aliases: ['windows server', 'windows'] },
@@ -293,8 +326,11 @@ export const TAXONOMY: TaxonomyEntry[] = [
     canonical: 'llm-integration',
     display: 'LLM application development',
     category: 'ai',
+    // 'rag' and 'retrieval augmented generation' moved out to their own entry:
+    // absorbed here, a posting requiring RAG was scored as already satisfied by
+    // having built an LLM-calling application, so the gap was never reported.
     aliases: ['llm integration', 'llm api', 'openai api', 'anthropic api', 'ai integration',
-              'ai agent', 'ai agents', 'agentic', 'rag', 'retrieval augmented generation',
+              'ai agent', 'ai agents', 'agentic',
               'llm application', 'genai application', 'ai application development'],
     related: { 'generative-ai': 0.7, 'prompt-engineering': 0.7 },
   },
@@ -381,7 +417,10 @@ export function extractSkills(text: string): string[] {
  */
 export function extractSkillMentions(text: string): { canonical: string; surface: string[] }[] {
   const flat = text.replace(/\s+/g, ' ');
-  const out = new Map<string, Set<string>>();
+
+  // Every hit, with where it sat, because position is what distinguishes a term
+  // the employer wrote from a fragment of one.
+  const hits: { canonical: string; literal: string; start: number; end: number }[] = [];
 
   for (const { needle, canonical } of ALIAS_INDEX) {
     const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -389,11 +428,42 @@ export function extractSkillMentions(text: string): { canonical: string; surface
     for (const match of flat.matchAll(pattern)) {
       // match[2] is the literal text as the employer wrote it, casing intact.
       const literal = match[2];
-      if (!literal) continue;
-      const found = out.get(canonical) ?? new Set<string>();
-      found.add(literal);
-      out.set(canonical, found);
+      if (literal === undefined || match.index === undefined) continue;
+      const start = match.index + (match[1]?.length ?? 0);
+      hits.push({ canonical, literal, start, end: start + literal.length });
     }
+  }
+
+  /**
+   * Drop a hit that is merely a fragment of a longer term.
+   *
+   * "Node.js" contains "js", and `.` counts as a word boundary here, so a
+   * posting naming Node.js also produced a JavaScript hit whose surface was the
+   * bare string "js". Mirroring then offered to print "js" on the resume as the
+   * employer's word for JavaScript, which is not a word any employer wrote and
+   * not something anyone would want on a page a recruiter is skimming.
+   *
+   * A hit is discarded when another hit for a DIFFERENT skill covers it
+   * entirely. Same-skill overlaps are kept: a posting saying both "Oracle" and
+   * "Oracle Database" should still offer both spellings.
+   */
+  const kept = hits.filter(
+    (hit) =>
+      !hits.some(
+        (other) =>
+          other !== hit &&
+          other.canonical !== hit.canonical &&
+          other.start <= hit.start &&
+          other.end >= hit.end &&
+          other.end - other.start > hit.end - hit.start
+      )
+  );
+
+  const out = new Map<string, Set<string>>();
+  for (const hit of kept) {
+    const found = out.get(hit.canonical) ?? new Set<string>();
+    found.add(hit.literal);
+    out.set(hit.canonical, found);
   }
 
   return [...out].map(([canonical, surface]) => ({

@@ -256,3 +256,43 @@ test("the model's skill selection is honoured, not overridden", () => {
   const longRanking = all.slice(0, 20);
   assert.deepEqual(selectSkills(longRanking, all), [], 'nothing should be appended to a full ranking');
 });
+
+test('a short alias inside a longer term is not offered as the employer word', () => {
+  // "Node.js" contains "js", and `.` counts as a word boundary, so a backend
+  // posting produced a JavaScript hit whose surface was the bare string "js" --
+  // and mirroring offered to print "js" on the resume as the employer's word.
+  const mentions = extractSkillMentions('We use Node.js and TypeScript in production.');
+  const js = mentions.find((m) => m.canonical === 'javascript');
+
+  assert.ok(!js?.surface.includes('js'), `"js" was captured as a standalone term: ${js?.surface.join(', ')}`);
+
+  // The containing term itself is still recognised.
+  assert.ok(mentions.some((m) => m.canonical === 'nodejs'));
+
+  // Same-skill overlaps are still kept: both spellings should be offered.
+  // Note the phrasing avoids "Oracle Database administration", where the longer
+  // `oracle-dba` alias covers the whole span and correctly wins -- a different
+  // skill absorbing a shorter one is exactly what the filter is for.
+  const oracle = extractSkillMentions('Experience with Oracle Database, plus general Oracle exposure.')
+    .find((m) => m.canonical === 'oracle');
+  assert.ok((oracle?.surface.length ?? 0) >= 2, `same-skill spellings should both survive: ${oracle?.surface.join(', ')}`);
+});
+
+test('construction QA/QC never credits a software testing requirement', () => {
+  // The candidate's QA/QC is quality checkpoints in a construction project
+  // lifecycle. A software QA posting saying "quality assurance" means testing
+  // software. Crediting one from the other is the same class of error as
+  // crediting machine learning from AI-tool fluency.
+  const { plan } = planFor(`Requirements:
+- Manual and automated software testing
+- Quality assurance and regression testing
+- Selenium test automation`);
+
+  const claimed = plan.mirror.map((e) => e.requirement);
+  assert.ok(!claimed.includes('qaqc'), 'construction QA/QC was credited to a software QA role');
+  assert.ok(!claimed.includes('software-testing'), 'software testing was claimed without evidence');
+
+  const named = [...plan.confirm, ...plan.gaps].map((e) => e.requirement);
+  assert.ok(named.includes('software-testing'), 'software testing should be reported as missing');
+  assert.ok(named.includes('test-automation'), 'test automation should be reported as missing');
+});

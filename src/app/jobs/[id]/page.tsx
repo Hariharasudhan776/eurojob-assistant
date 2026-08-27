@@ -9,6 +9,7 @@ import { Bar, Card, Pill, RecommendationPill, ScoreBadge, SponsorshipPill } from
 import { AtsCard } from '@/components/AtsCard';
 import { KeywordGaps } from '@/components/KeywordGaps';
 import { CompensationCard } from '@/components/CompensationCard';
+import { BackButton } from '@/components/BackButton';
 import { extractSalary, sponsorshipEvidence } from '@/lib/jobs/compensation';
 import { buildMirrorPlan } from '@/lib/resume/mirror';
 import { scoreJob } from '@/lib/match/score';
@@ -91,6 +92,8 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="space-y-4">
+      <BackButton />
+
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">

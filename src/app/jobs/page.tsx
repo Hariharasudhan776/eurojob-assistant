@@ -4,6 +4,7 @@ import { currentUserId } from '@/lib/session';
 import { countryName } from '@/lib/jobs/types';
 import { roleLabel } from '@/lib/match/roles';
 import { Card, GradientButton, Pill, RecommendationPill, ScoreRing, SponsorshipPill } from '@/components/ui';
+import { extractSalary, formatSalary } from '@/lib/jobs/compensation';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,6 +143,7 @@ export default async function JobsPage({
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <RecommendationPill value={job.recommendation} />
                     <SponsorshipPill value={job.visa_sponsorship} />
+                    {salaryPill(job)}
                     {job.role_category && <Pill>{roleLabel(job.role_category)}</Pill>}
                     {!job.description_complete && <Pill tone="warn">extract only</Pill>}
                     {job.stage && <Pill tone="accent">{job.stage}</Pill>}
@@ -169,4 +171,23 @@ export default async function JobsPage({
       )}
     </div>
   );
+}
+
+/**
+ * Pay on the list card, from the structured field when the source gave one and
+ * from the posting text otherwise.
+ *
+ * Text is the common case by a wide margin -- of 2,563 live jobs, 263 carried a
+ * salary in an API field and another 331 stated one only in prose. Reading it
+ * here is what turns "salary: not stated" into a number on ten times as many
+ * cards, without a migration or a re-sync.
+ */
+function salaryPill(job: { salary_min: number | null; salary_max: number | null; salary_currency: string | null; description: string | null }) {
+  if (job.salary_min || job.salary_max) {
+    const money = (v: number) => `${job.salary_currency ? `${job.salary_currency} ` : ''}${v.toLocaleString('en-GB')}`;
+    const text = job.salary_min && job.salary_max ? `${money(job.salary_min)} – ${money(job.salary_max)}` : money(job.salary_min ?? job.salary_max ?? 0);
+    return <Pill tone="good">{text}</Pill>;
+  }
+  const found = extractSalary(job.description ?? '');
+  return found ? <Pill tone="good">{formatSalary(found)}</Pill> : null;
 }

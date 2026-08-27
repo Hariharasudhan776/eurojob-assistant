@@ -8,6 +8,8 @@ import { atsReport } from '@/lib/match/ats';
 import { Bar, Card, Pill, RecommendationPill, ScoreBadge, SponsorshipPill } from '@/components/ui';
 import { AtsCard } from '@/components/AtsCard';
 import { KeywordGaps } from '@/components/KeywordGaps';
+import { CompensationCard } from '@/components/CompensationCard';
+import { extractSalary, sponsorshipEvidence } from '@/lib/jobs/compensation';
 import { buildMirrorPlan } from '@/lib/resume/mirror';
 import { scoreJob } from '@/lib/match/score';
 import { jobRowToNormalised } from '@/lib/jobs/from-row';
@@ -75,6 +77,12 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
    * Oracle tooling the matcher used to be blind to. Scoring is deterministic and
    * costs nothing, so recomputing here is cheaper than a stale answer.
    */
+  // Pay and sponsorship, read out of the posting text at render time. Nothing is
+  // stored, so this applies to every job already collected -- most of which
+  // carry their salary only in prose, where no structured field ever saw it.
+  const salary = extractSalary(job.description ?? '');
+  const sponsorship = sponsorshipEvidence(job.description ?? '');
+
   const liveMatch = profile ? scoreJob(profile.data, jobRowToNormalised(job), { preferredCountries: [] }) : null;
   const mirror =
     profile && liveMatch
@@ -226,6 +234,13 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
           </p>
         </Card>
       )}
+
+      <CompensationCard
+        salary={salary}
+        structured={{ min: job.salary_min, max: job.salary_max, currency: job.salary_currency }}
+        sponsorship={sponsorship}
+        verdict={job.visa_sponsorship}
+      />
 
       {ats && <AtsCard report={ats} />}
       {mirror && (

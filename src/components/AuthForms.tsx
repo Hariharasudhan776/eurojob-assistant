@@ -136,19 +136,42 @@ export function SignupForm() {
         <span className="text-xs text-[var(--color-muted)]">Password — at least 10 characters</span>
         <input name="password" type="password" required minLength={10} autoComplete="new-password" className={`mt-1 ${inputClass}`} />
       </label>
+      {/* The CV input is not `required`: the JSON alternative below is a valid
+          submission, and marking this required would make that path
+          unreachable. The server rejects a request carrying neither. */}
       <label className="block">
-        <span className="text-xs text-[var(--color-muted)]">Your profile, as JSON</span>
-        <input name="profile" type="file" accept="application/json,.json" required className={`mt-1 ${inputClass}`} />
+        <span className="text-xs text-[var(--color-muted)]">Your CV — PDF or Word (.docx)</span>
+        <input
+          name="cv"
+          type="file"
+          accept=".pdf,.docx,.txt,.md,application/pdf"
+          className={`mt-1 ${inputClass}`}
+        />
       </label>
 
       <p className="text-xs text-[var(--color-muted)]">
-        Start from the{' '}
-        <a href="/api/profile/template" className="text-[var(--color-accent)]">
-          template
-        </a>
-        . Every skill needs an <code className="text-[var(--color-fg)]">evidence</code> line saying where it came from —
-        that is what stops a generated resume claiming something you cannot back up, so the upload is rejected without it.
+        Your CV is read into a profile that you check and correct before anything is used — nothing
+        is generated from it until you have confirmed it line by line. A scanned CV will not work,
+        because the words are pixels rather than text.
       </p>
+
+      {/* The JSON route is kept for anyone who wants exact control, but it is no
+          longer the price of entry: the one real profile is 690 lines. */}
+      <details className="text-xs text-[var(--color-muted)]">
+        <summary className="cursor-pointer">I would rather write the profile myself, as JSON</summary>
+        <div className="mt-2 space-y-2">
+          <input name="profile" type="file" accept="application/json,.json" className={inputClass} />
+          <p>
+            Start from the{' '}
+            <a href="/api/profile/template" className="text-[var(--color-accent)]">
+              template
+            </a>
+            . Every skill needs an <code className="text-[var(--color-fg)]">evidence</code> line saying
+            where it came from — that is what stops a generated resume claiming something you cannot
+            back up, so the upload is rejected without it. Attach this instead of a CV.
+          </p>
+        </div>
+      </details>
 
       {error && <p className="text-sm text-[var(--color-bad)]">{error}</p>}
       {details.length > 0 && (

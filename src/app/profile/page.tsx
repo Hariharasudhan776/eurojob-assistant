@@ -1,4 +1,4 @@
-import { latestProfile, unscoredJobs } from '@/lib/db/repo';
+import { latestProfile, unscoredJobs, cvTextFor } from '@/lib/db/repo';
 import { currentUserId } from '@/lib/session';
 import { Card, Pill } from '@/components/ui';
 import { ProfileTools } from '@/components/ProfileTools';
@@ -22,12 +22,15 @@ const LABELS: Record<string, string> = {
 export default async function ProfilePage() {
   const userId = await currentUserId();
   const profile = await latestProfile(userId);
+  // The CV they signed up with, if they signed up that way and have not yet
+  // turned it into a profile.
+  const storedCv = await cvTextFor(userId);
 
   if (!profile) {
     return (
       <div className="space-y-4">
         <Card title="Start with your CV">
-          <CvImport />
+          <CvImport storedCv={storedCv?.filename ?? (storedCv ? 'cv' : null)} />
         </Card>
         <Card title="Or upload a profile as JSON">
           <p className="text-sm text-[var(--color-muted)]">
@@ -116,7 +119,7 @@ export default async function ProfilePage() {
       )}
 
       <Card title="Replace this from a CV">
-        <CvImport />
+        <CvImport storedCv={storedCv?.filename ?? (storedCv ? 'cv' : null)} />
       </Card>
 
       <Card title="Editing this">

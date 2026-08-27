@@ -176,6 +176,31 @@ export async function promoteToAdmin(email: string): Promise<void> {
  * which keeps whatever profile and applications that row already owns instead of
  * orphaning them behind an account nobody can reach.
  */
+/**
+ * The CV text a user signed up with, if they signed up that way.
+ *
+ * Read only by the owner: the parameter is the user id from their own session,
+ * never a value from a request body. A CV is an identity document -- name,
+ * phone, address, employment history -- and one account being able to name
+ * another's row id must not be enough to read it.
+ */
+export async function cvTextFor(userId: number): Promise<{ text: string; filename: string | null } | null> {
+  const { rows } = await getPool().query(
+    'SELECT cv_text, cv_filename FROM users WHERE id = $1 AND cv_text IS NOT NULL',
+    [userId]
+  );
+  if (!rows[0]) return null;
+  return { text: rows[0].cv_text as string, filename: (rows[0].cv_filename as string | null) ?? null };
+}
+
+/** Attach CV text to an account at signup. Never overwrites a saved profile. */
+export async function saveCvText(userId: number, text: string, filename: string): Promise<void> {
+  await getPool().query(
+    'UPDATE users SET cv_text = $2, cv_filename = $3, cv_uploaded_at = now() WHERE id = $1',
+    [userId, text, filename.slice(0, 200)]
+  );
+}
+
 export async function createUser(email: string, passwordHash: string, displayName: string | null): Promise<number | null> {
   return withTransaction(async (client) => {
     // Locked while we decide, so two simultaneous signups for one address cannot

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Credentials, hashPassword } from '@/lib/auth';
-import { createUser, saveProfile } from '@/lib/db/repo';
+import { createUser, saveCvText, saveProfile } from '@/lib/db/repo';
 import { parseProfileUpload, MAX_UPLOAD_BYTES } from '@/lib/resume/upload';
+import { extractCvText, MAX_CV_BYTES } from '@/lib/resume/extract';
 
 // bcrypt is native-ish and the pool is a Node client: this route cannot run on
 // the edge runtime.
@@ -50,25 +51,61 @@ export async function POST(request: Request) {
   const displayNameRaw = form.get('displayName');
   const displayName = typeof displayNameRaw === 'string' && displayNameRaw.trim() ? displayNameRaw.trim().slice(0, 120) : null;
 
+  /**
+   * Two ways in, and the CV is the one people can actually use.
+   *
+   * Only the free half of the pipeline runs here. Extracting text from a PDF is
+   * deterministic and costs nothing; turning it into a profile is a model call,
+   * and running that for an anonymous visitor would be an open tap on the API
+   * budget for an account that may never be approved. So the text is stored, and
+   * the drafting happens after approval, on the user's own account and cap.
+   *
+   * The JSON path is kept for anyone who wants exact control, and is unchanged.
+   */
+  const cv = form.get('cv');
   const file = form.get('profile');
-  if (!(file instanceof File) || file.size === 0) {
+
+  const hasCv = cv instanceof File && cv.size > 0;
+  const hasJson = file instanceof File && file.size > 0;
+
+  if (!hasCv && !hasJson) {
     return NextResponse.json(
-      { error: 'Attach your profile JSON. Download the template from the signup page if you need a starting point.' },
+      { error: 'Attach your CV as a PDF or Word document.' },
       { status: 400 }
     );
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return NextResponse.json(
-      { error: `That file is ${Math.round(file.size / 1024)} KB; the limit is ${Math.round(MAX_UPLOAD_BYTES / 1024)} KB.` },
-      { status: 413 }
-    );
-  }
 
-  const parsed = parseProfileUpload(await file.text());
-  if (!parsed.profile) {
-    // Validated BEFORE the account is created, so a rejected profile does not
-    // leave a half-made account with no profile behind it.
-    return NextResponse.json({ error: 'That profile could not be accepted.', details: parsed.errors }, { status: 422 });
+  let cvText: { text: string; filename: string } | null = null;
+  let parsed: ReturnType<typeof parseProfileUpload> | null = null;
+
+  if (hasCv) {
+    if (cv.size > MAX_CV_BYTES) {
+      return NextResponse.json(
+        { error: `That file is ${(cv.size / 1024 / 1024).toFixed(1)}MB; the limit is 8MB.` },
+        { status: 413 }
+      );
+    }
+    const extracted = await extractCvText(cv.name, new Uint8Array(await cv.arrayBuffer()));
+    // Checked BEFORE the account exists, so an unreadable CV does not leave a
+    // half-made account behind -- the same rule the JSON path has always had.
+    if (!extracted.text || extracted.errors.length) {
+      return NextResponse.json(
+        { error: extracted.errors[0] ?? 'No text could be read from that file.', details: extracted.errors },
+        { status: 422 }
+      );
+    }
+    cvText = { text: extracted.text, filename: cv.name };
+  } else if (hasJson) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: `That file is ${Math.round(file.size / 1024)} KB; the limit is ${Math.round(MAX_UPLOAD_BYTES / 1024)} KB.` },
+        { status: 413 }
+      );
+    }
+    parsed = parseProfileUpload(await file.text());
+    if (!parsed.profile) {
+      return NextResponse.json({ error: 'That profile could not be accepted.', details: parsed.errors }, { status: 422 });
+    }
   }
 
   const passwordHash = await hashPassword(credentials.data.password);
@@ -77,7 +114,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'An account already exists for that email. Sign in instead.' }, { status: 409 });
   }
 
-  await saveProfile(userId, parsed.profile);
+  if (parsed?.profile) await saveProfile(userId, parsed.profile);
+  if (cvText) await saveCvText(userId, cvText.text, cvText.filename);
 
   // Deliberately NOT signed in. New accounts are created 'pending' and must be
   // approved by an admin before they can sign in — so this returns a "request
@@ -88,6 +126,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     pending: true,
-    filledIn: parsed.filledIn,
+    fromCv: Boolean(cvText),
+    filledIn: parsed?.filledIn ?? [],
   });
 }

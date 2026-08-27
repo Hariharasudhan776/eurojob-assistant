@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAiProvider, latestProfile } from '@/lib/db/repo';
+import { cvTextFor, getAiProvider, latestProfile } from '@/lib/db/repo';
 import { requireUserId, UnauthenticatedError } from '@/lib/auth';
 import { aiRuntime } from '@/lib/ai/runtime';
 import { AiClient } from '@/lib/ai/client';
@@ -35,29 +35,52 @@ export async function POST(request: Request) {
   try {
     const userId = await requireUserId();
 
+    /**
+     * Two ways to arrive here, and both end at the same review screen.
+     *
+     * A file attached now, from the Profile page — or nothing attached, in
+     * which case the CV stored at signup is used. That second path is what
+     * closes the loop for a new account: extraction ran for free while they
+     * were still anonymous, and the model call waits until here, where there
+     * is an approved account with its own spend cap behind it.
+     */
     const form = await request.formData().catch(() => null);
     const file = form?.get('cv');
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: 'Attach a CV file as "cv".' }, { status: 400 });
-    }
-    if (file.size > MAX_CV_BYTES) {
-      return NextResponse.json(
-        { error: `That file is ${(file.size / 1024 / 1024).toFixed(1)}MB. The limit is 8MB.` },
-        { status: 413 }
-      );
-    }
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const extracted = await extractCvText(file.name, bytes);
+    let text: string;
+    let kind = 'stored';
+    let pages: number | null = null;
 
-    // A failure to read is reported as a failure to read, not as an empty draft.
-    // Sending a model 40 characters of garbage produces a confident, fictional
-    // profile, which is the exact outcome this whole design exists to prevent.
-    if (!extracted.text || extracted.errors.length) {
-      return NextResponse.json(
-        { error: extracted.errors[0] ?? 'No text could be read from that file.', errors: extracted.errors },
-        { status: 422 }
-      );
+    if (file instanceof File && file.size > 0) {
+      if (file.size > MAX_CV_BYTES) {
+        return NextResponse.json(
+          { error: `That file is ${(file.size / 1024 / 1024).toFixed(1)}MB. The limit is 8MB.` },
+          { status: 413 }
+        );
+      }
+      const extracted = await extractCvText(file.name, new Uint8Array(await file.arrayBuffer()));
+
+      // A failure to read is reported as a failure to read, not as an empty
+      // draft. Sending a model 40 characters of garbage produces a confident,
+      // fictional profile -- the exact outcome this design exists to prevent.
+      if (!extracted.text || extracted.errors.length) {
+        return NextResponse.json(
+          { error: extracted.errors[0] ?? 'No text could be read from that file.', errors: extracted.errors },
+          { status: 422 }
+        );
+      }
+      text = extracted.text;
+      kind = extracted.kind;
+      pages = extracted.pages;
+    } else {
+      const stored = await cvTextFor(userId);
+      if (!stored) {
+        return NextResponse.json(
+          { error: 'Attach a CV as a PDF or Word document.' },
+          { status: 400 }
+        );
+      }
+      text = stored.text;
     }
 
     const [profile, provider] = await Promise.all([latestProfile(userId), getAiProvider(userId)]);
@@ -75,7 +98,7 @@ export async function POST(request: Request) {
     const { client, services, guard } = await aiRuntime(userId, profile?.data ?? EMPTY_PROFILE, chosen);
     const before = client.stats.estimatedCostUsd;
 
-    const draft = await services.draftProfileFromCv(extracted.text);
+    const draft = await services.draftProfileFromCv(text);
 
     // Spend is flushed before responding: a serverless function can be frozen
     // the instant it answers, and an unrecorded charge is a cap that stopped
@@ -85,7 +108,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       draft,
-      source: { kind: extracted.kind, characters: extracted.text.length, pages: extracted.pages },
+      source: { kind, characters: text.length, pages },
       costUsd: client.stats.estimatedCostUsd - before,
       spentTodayUsd: guard.spentLast24h(),
       // Stated plainly so the review screen can say it rather than imply it.

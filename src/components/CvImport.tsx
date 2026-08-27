@@ -37,7 +37,7 @@ import type { ProfileDraft, DraftSkill } from '@/lib/resume/draft';
 
 type Stage = 'upload' | 'review' | 'saved';
 
-export function CvImport() {
+export function CvImport({ storedCv }: { storedCv?: string | null } = {}) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>('upload');
   const [busy, setBusy] = useState(false);
@@ -50,12 +50,19 @@ export function CvImport() {
   const [needsSponsorship, setNeedsSponsorship] = useState(true);
   const [currentCountry, setCurrentCountry] = useState('');
 
-  async function upload(file: File) {
+  /**
+   * `file` omitted means "use the CV I uploaded when I signed up".
+   *
+   * That CV was turned into text for free while the visitor was still anonymous;
+   * the model call it needs happens here, once, on an approved account with a
+   * spend cap behind it.
+   */
+  async function upload(file?: File) {
     setBusy(true);
     setError(null);
 
     const body = new FormData();
-    body.append('cv', file);
+    if (file) body.append('cv', file);
     const res = await fetch('/api/profile/from-cv', { method: 'POST', body });
     const payload = (await readJson(res)) as { error?: string; draft?: ProfileDraft; source?: typeof source };
     setBusy(false);
@@ -292,9 +299,29 @@ export function CvImport() {
 
   return (
     <div>
+      {storedCv && (
+        <div className="mb-4 rounded-xl border border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 p-3">
+          <p className="text-xs font-semibold">
+            We already have the CV you signed up with{storedCv !== 'cv' ? ` (${storedCv})` : ''}.
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-muted)]">
+            Read it into a profile now — you will check every field before anything is saved.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void upload()}
+            className="mt-2 rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow disabled:opacity-40"
+            style={{ backgroundImage: 'var(--grad-brand)' }}
+          >
+            {busy ? 'Reading your CV…' : 'Build my profile from it'}
+          </button>
+        </div>
+      )}
+
       <p className="text-sm text-[var(--color-muted)]">
-        Upload your CV as a PDF or a Word .docx. It is read into a profile that you check and correct
-        before anything is saved.
+        {storedCv ? 'Or upload a different CV' : 'Upload your CV'} as a PDF or a Word .docx. It is read
+        into a profile that you check and correct before anything is saved.
       </p>
       <label className="mt-3 inline-block">
         <input

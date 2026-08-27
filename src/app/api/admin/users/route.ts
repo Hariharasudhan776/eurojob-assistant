@@ -25,11 +25,27 @@ export async function POST(request: Request) {
 
     if (action === 'set_provider') {
       const provider = body.provider === 'gemini' ? 'gemini' : 'claude';
-      // The admin sets the provider on their OWN account (the only one that
-      // generates), so this uses the authenticated id, not a body-supplied one.
       const adminId = await requireAdminId();
-      await setAiProvider(adminId, provider);
-      return NextResponse.json({ ok: true, provider });
+
+      /**
+       * Which model an account generates with, set per account by the admin.
+       *
+       * It used to set the provider on the admin's own account only, on the
+       * assumption that theirs was the only one generating. That stopped being
+       * true the moment a second person was approved — and the cost lands
+       * entirely on the owner, because there is one `ANTHROPIC_API_KEY` for the
+       * whole deployment. Every account left on Claude spends the owner's money
+       * up to its own $2/day cap.
+       *
+       * Omitting `userId` still means "mine", so the existing control keeps
+       * working; supplying one sets that account instead. Both go through
+       * requireAdminId(), so this stays an owner's decision — no user can move
+       * themselves onto the paid model, and there is deliberately no control
+       * anywhere in the user-facing app that would let them.
+       */
+      const target = Number.isInteger(Number(body.userId)) && Number(body.userId) > 0 ? Number(body.userId) : adminId;
+      await setAiProvider(target, provider);
+      return NextResponse.json({ ok: true, provider, userId: target });
     }
 
     if (!Number.isInteger(userId) || userId <= 0) {

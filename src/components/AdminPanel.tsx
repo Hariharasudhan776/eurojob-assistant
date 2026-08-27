@@ -13,6 +13,7 @@ export interface AdminUser {
   created_at: string;
   last_login_at: string | null;
   has_password: boolean;
+  ai_provider: string;
 }
 
 const field =
@@ -44,6 +45,9 @@ export function AdminPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [current, setCurrent] = useState(provider);
   const [resetShown, setResetShown] = useState<Record<number, string>>({});
+  // Optimistic per-account provider, so the row updates before the refresh
+  // lands. Falls back to the value the server rendered.
+  const [providerOf, setProviderOf] = useState<Record<number, string>>({});
   const [message, setMessage] = useState<string | null>(null);
 
   async function act(action: string, userId?: number, extra?: Record<string, unknown>) {
@@ -58,7 +62,10 @@ export function AdminPanel({
       });
       const body = await readJson(res);
       if (!res.ok) throw new Error(body.error ?? 'failed');
-      if (action === 'set_provider') setCurrent(body.provider);
+      if (action === 'set_provider') {
+        if (userId) setProviderOf((prev) => ({ ...prev, [userId]: body.provider }));
+        else setCurrent(body.provider);
+      }
       if (action === 'reset_password' && userId) {
         setResetShown((prev) => ({ ...prev, [userId]: body.password }));
       } else {
@@ -149,6 +156,7 @@ export function AdminPanel({
                 <th className="pb-2 pr-3">User</th>
                 <th className="pb-2 pr-3">Status</th>
                 <th className="pb-2 pr-3">Last login</th>
+                <th className="pb-2 pr-3">AI model</th>
                 <th className="pb-2 pr-3">Password</th>
                 <th className="pb-2">Actions</th>
               </tr>
@@ -163,6 +171,34 @@ export function AdminPanel({
                   </td>
                   <td className="py-2 pr-3"><StatusBadge status={u.status} /></td>
                   <td className="py-2 pr-3 text-xs text-[var(--color-muted)]">{u.last_login_at ? fmt(u.last_login_at) : 'never'}</td>
+                  {/* Per account, and only here. There is deliberately no
+                      control in the user-facing app: one API key pays for
+                      everyone, so moving an account onto Claude spends the
+                      owner's money, and that has to stay the owner's call. */}
+                  <td className="py-2 pr-3">
+                    <div className="flex gap-1">
+                      {(['gemini', 'claude'] as const).map((p) => {
+                        const on = (providerOf[u.id] ?? u.ai_provider) === p;
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => act('set_provider', u.id, { provider: p })}
+                            disabled={busy !== null || on}
+                            title={p === 'claude' ? 'Better output, billed to you' : 'Free tier, costs you nothing'}
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold disabled:opacity-100 ${
+                              on
+                                ? p === 'claude'
+                                  ? 'bg-[var(--color-warn)]/20 text-[var(--color-warn)]'
+                                  : 'bg-[var(--color-good)]/20 text-[var(--color-good)]'
+                                : 'border border-white/10 text-[var(--color-muted)] hover:text-[var(--color-fg)]'
+                            }`}
+                          >
+                            {p === 'claude' ? 'Claude £' : 'Gemini free'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </td>
                   <td className="py-2 pr-3 text-xs">
                     {resetShown[u.id] ? (
                       <code className="rounded bg-[var(--color-good)]/15 px-1.5 py-0.5 text-[var(--color-good)]">{resetShown[u.id]}</code>

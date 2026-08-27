@@ -16,7 +16,7 @@ export default async function AdminPage() {
           <span className="text-gradient">Control</span> panel
         </h1>
         <p className="mt-1 text-sm text-[var(--color-muted)]">
-          Approve account requests, manage users and passwords, and choose the AI provider.
+          Approve account requests, manage users and passwords, and choose which AI model each account generates with.
         </p>
       </div>
 
@@ -27,6 +27,7 @@ export default async function AdminPage() {
           display_name: u.display_name,
           status: u.status,
           is_admin: u.is_admin,
+          ai_provider: u.ai_provider,
           created_at: typeof u.created_at === 'string' ? u.created_at : new Date(u.created_at).toISOString(),
           last_login_at: u.last_login_at
             ? typeof u.last_login_at === 'string'

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Brand } from '@/components/Brand';
 import { Plus_Jakarta_Sans, Space_Grotesk } from 'next/font/google';
 import { currentUser } from '@/lib/auth';
 import { pendingUserCount } from '@/lib/db/repo';
@@ -27,9 +28,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen">
         <header className="sticky top-0 z-20 border-b border-white/10 bg-[rgba(10,7,16,0.7)] backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
-            <Link href="/" className="font-display text-lg font-extrabold tracking-tight">
-              <span className="text-gradient">Job</span>
-              <span className="text-[var(--color-fg)]">Assistant</span>
+            <Link href="/" className="shrink-0">
+              <Brand size="md" gradientId="brandNav" />
             </Link>
             {user && <Nav isAdmin={user.isAdmin} pending={pending} />}
             <div className="ml-auto flex items-center gap-3 text-sm">

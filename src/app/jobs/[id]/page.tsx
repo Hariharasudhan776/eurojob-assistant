@@ -7,6 +7,10 @@ import { roleLabel } from '@/lib/match/roles';
 import { atsReport } from '@/lib/match/ats';
 import { Bar, Card, Pill, RecommendationPill, ScoreBadge, SponsorshipPill } from '@/components/ui';
 import { AtsCard } from '@/components/AtsCard';
+import { KeywordGaps } from '@/components/KeywordGaps';
+import { buildMirrorPlan } from '@/lib/resume/mirror';
+import { scoreJob } from '@/lib/match/score';
+import { jobRowToNormalised } from '@/lib/jobs/from-row';
 import { JobActions } from '@/components/JobActions';
 
 export const dynamic = 'force-dynamic';
@@ -61,6 +65,21 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
   const ats = profile
     ? atsReport(breakdown.requirements?.required ?? [], profile.data, job.description_complete)
     : null;
+
+  /**
+   * Which of this posting's words the candidate has earned, which are worth
+   * asking about, and which are simply absent.
+   *
+   * Scored fresh rather than read from `breakdown`: a stored breakdown predates
+   * the vocabulary work, so it carries neither the employer's spellings nor the
+   * Oracle tooling the matcher used to be blind to. Scoring is deterministic and
+   * costs nothing, so recomputing here is cheaper than a stale answer.
+   */
+  const liveMatch = profile ? scoreJob(profile.data, jobRowToNormalised(job), { preferredCountries: [] }) : null;
+  const mirror =
+    profile && liveMatch
+      ? buildMirrorPlan(liveMatch.requirements.required, liveMatch.requirements.preferred, profile.data)
+      : null;
 
   return (
     <div className="space-y-4">
@@ -209,6 +228,9 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
       )}
 
       {ats && <AtsCard report={ats} />}
+      {mirror && (
+        <KeywordGaps mirrored={mirror.mirror} confirm={mirror.confirm} gaps={mirror.gaps} />
+      )}
 
       <JobActions jobId={job.id} currentStage={job.stage} notes={job.notes} />
 

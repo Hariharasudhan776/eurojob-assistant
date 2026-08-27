@@ -1,6 +1,6 @@
 import type { CandidateProfile, Skill } from '../resume/profile.ts';
 import { SKILL_LEVEL_RANK } from '../resume/profile.ts';
-import { canonicalise, display, extractSkills, lookup, transferWeight } from './taxonomy.ts';
+import { canonicalise, display, extractSkillMentions, extractSkills, lookup, transferWeight } from './taxonomy.ts';
 import { assessRelevance, shrinkRatio, type RelevanceVerdict } from './relevance.ts';
 import type { NormalisedJob } from '../jobs/types.ts';
 
@@ -36,6 +36,16 @@ export interface SkillVerdict {
   weight: number;
   level: string | null;
   evidence: string | null;
+  /**
+   * The employer's own spellings of this requirement, taken verbatim from the
+   * posting, longest first. Empty when the requirement came from an override
+   * rather than from the text.
+   *
+   * This is what an applicant tracking system searches for and what a recruiter
+   * skimming a stack of resumes visually locks onto. Our `display` name is for
+   * our UI; `surface` is the vocabulary the document has to speak.
+   */
+  surface: string[];
 }
 
 export interface MatchResult {
@@ -130,7 +140,7 @@ export function extractRequirements(job: NormalisedJob): { required: string[]; p
   return { required, preferred: preferredOnly };
 }
 
-function judge(requirement: string, skills: Skill[]): SkillVerdict {
+function judge(requirement: string, skills: Skill[], surface: string[] = []): SkillVerdict {
   const base: SkillVerdict = {
     requirement,
     display: display(requirement),
@@ -138,6 +148,7 @@ function judge(requirement: string, skills: Skill[]): SkillVerdict {
     weight: 0,
     level: null,
     evidence: null,
+    surface,
   };
 
   const exact = skills.find((s) => s.canonical === requirement);
@@ -392,8 +403,19 @@ export interface ScoreOptions {
 
 export function scoreJob(profile: CandidateProfile, job: NormalisedJob, options: ScoreOptions): MatchResult {
   const parsed = options.requirementsOverride ?? extractRequirements(job);
-  const requiredVerdicts = parsed.required.map((r) => judge(r, profile.skills));
-  const preferredVerdicts = parsed.preferred.map((r) => judge(r, profile.skills));
+
+  // The employer's wording, keyed by canonical, so every verdict can carry the
+  // term the posting actually used. Scanned over the whole description rather
+  // than the required/preferred split: the split decides how much a requirement
+  // counts, not how it is spelled.
+  const spellings = new Map(
+    extractSkillMentions(`${job.title}
+${job.description}`).map((m) => [m.canonical, m.surface])
+  );
+  const surfacesFor = (canonical: string) => spellings.get(canonical) ?? [];
+
+  const requiredVerdicts = parsed.required.map((r) => judge(r, profile.skills, surfacesFor(r)));
+  const preferredVerdicts = parsed.preferred.map((r) => judge(r, profile.skills, surfacesFor(r)));
   const relevance = assessRelevance(job.title, parsed.required);
 
   const minYears = detectMinYearsFromJob(job);

@@ -80,7 +80,104 @@ export const TAXONOMY: TaxonomyEntry[] = [
     category: 'database_admin',
     aliases: ['performance tuning', 'query optimisation', 'query optimization', 'sql tuning', 'query tuning', 'database tuning', 'indexing'],
   },
-  { canonical: 'backup-recovery', display: 'Backup & Recovery', category: 'database_admin', aliases: ['backup and recovery', 'disaster recovery', 'rman'] },
+  { canonical: 'backup-recovery', display: 'Backup & Recovery', category: 'database_admin', aliases: ['backup and recovery', 'disaster recovery'] },
+
+  // --- Oracle DBA tooling, named individually on purpose -------------------
+  //
+  // These used to be either invisible (Data Guard, ASM, AWR, Data Pump) or
+  // silently folded into a broader skill ('rman' was an alias of
+  // backup-recovery). Both behaviours lost the employer's own word, which is
+  // the exact string an ATS screens for and the exact string a recruiter's eye
+  // stops on. A posting demanding RMAN now produces a requirement called RMAN.
+  //
+  // Folding was also dishonest in the flattering direction: owning "backup and
+  // recovery" was scored as fully satisfying "RMAN", so the gap never surfaced
+  // and was never put to the candidate. Each of these now transfers only
+  // partially from the general skill, so it shows up as a question to answer
+  // rather than a box already ticked.
+  {
+    canonical: 'oracle-rman',
+    display: 'Oracle RMAN',
+    category: 'database_admin',
+    aliases: ['rman', 'recovery manager', 'oracle recovery manager'],
+    related: { 'backup-recovery': 0.7, 'oracle-dba': 0.45 },
+  },
+  {
+    canonical: 'oracle-datapump',
+    display: 'Oracle Data Pump',
+    category: 'database_admin',
+    aliases: ['data pump', 'datapump', 'expdp', 'impdp', 'exp/imp'],
+    related: { 'data-migration': 0.6, 'oracle-dba': 0.4 },
+  },
+  {
+    canonical: 'oracle-dataguard',
+    display: 'Oracle Data Guard',
+    category: 'database_admin',
+    aliases: ['data guard', 'dataguard', 'physical standby', 'standby database'],
+    related: { 'oracle-dba': 0.3, 'high-availability': 0.6 },
+  },
+  {
+    // The bare 'asm' alias is kept deliberately: DBA postings write it alone far
+    // more often than anything else means it. It can misfire on an embedded-
+    // systems posting using 'asm' for assembly, which costs one spurious line in
+    // a requirements list and nothing more.
+    canonical: 'oracle-asm',
+    display: 'Oracle ASM',
+    category: 'database_admin',
+    aliases: ['asm', 'automatic storage management'],
+    related: { 'oracle-dba': 0.3 },
+  },
+  {
+    canonical: 'oracle-rac',
+    display: 'Oracle RAC',
+    category: 'database_admin',
+    aliases: ['oracle rac', 'real application clusters', 'rac cluster'],
+    related: { 'oracle-dba': 0.3, 'high-availability': 0.6 },
+  },
+  {
+    canonical: 'oracle-awr',
+    display: 'AWR / ADDM diagnostics',
+    category: 'database_admin',
+    aliases: ['awr', 'addm', 'statspack', 'automatic workload repository', 'awr report'],
+    related: { 'performance-tuning': 0.6 },
+  },
+  {
+    canonical: 'oracle-oem',
+    display: 'Oracle Enterprise Manager',
+    category: 'tool',
+    // No bare 'oem': it means original-equipment-manufacturer everywhere else.
+    aliases: ['oracle enterprise manager', 'enterprise manager', 'oem cloud control', 'grid control'],
+    related: { 'oracle-dba': 0.4 },
+  },
+  {
+    canonical: 'high-availability',
+    display: 'High Availability & Failover',
+    category: 'database_admin',
+    // 'disaster recovery' stays on backup-recovery; a needle must not appear twice.
+    aliases: ['high availability', 'ha/dr', 'failover', 'clustering'],
+    related: { 'backup-recovery': 0.5 },
+  },
+  {
+    canonical: 'partitioning',
+    display: 'Table Partitioning',
+    category: 'database_admin',
+    aliases: ['partitioning', 'table partitioning', 'partitioned tables'],
+    related: { 'performance-tuning': 0.4, 'data-modelling': 0.4 },
+  },
+  {
+    canonical: 'goldengate',
+    display: 'Oracle GoldenGate',
+    category: 'database_admin',
+    aliases: ['goldengate', 'golden gate'],
+    related: { 'data-migration': 0.4 },
+  },
+  {
+    canonical: 'sql-loader',
+    display: 'SQL*Loader',
+    category: 'tool',
+    aliases: ['sql*loader', 'sql loader', 'sqlldr'],
+    related: { 'data-migration': 0.5 },
+  },
   {
     canonical: 'data-migration',
     display: 'Data Migration',
@@ -141,6 +238,27 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'cicd', display: 'CI/CD', category: 'tool', aliases: ['ci/cd', 'continuous integration', 'jenkins', 'github actions', 'gitlab ci'] },
   { canonical: 'agile', display: 'Agile / Scrum', category: 'soft', aliases: ['scrum', 'agile methodology', 'kanban', 'sprint'] },
   { canonical: 'cloud', display: 'Cloud platforms', category: 'tool', aliases: ['aws', 'azure', 'gcp', 'google cloud', 'oci'] },
+
+  // --- modern data platform, present so its ABSENCE is reported -------------
+  //
+  // The candidate holds none of these. That is exactly why they are here: a
+  // requirement the taxonomy cannot see is not scored, not shown as a gap, and
+  // not counted against keyword coverage -- so a posting demanding Kafka and
+  // Terraform was being reported as fully covered. Blind spots always flatter,
+  // and a flattering gap analysis is the one that gets a resume rejected without
+  // ever explaining why.
+  { canonical: 'terraform', display: 'Terraform', category: 'tool', aliases: ['iac', 'infrastructure as code'], related: { cloud: 0.3 } },
+  { canonical: 'ansible', display: 'Ansible', category: 'tool', aliases: ['configuration management'] },
+  { canonical: 'kafka', display: 'Apache Kafka', category: 'tool', aliases: ['apache kafka', 'event streaming'] },
+  { canonical: 'airflow', display: 'Apache Airflow', category: 'tool', aliases: ['apache airflow', 'dag orchestration'] },
+  { canonical: 'snowflake', display: 'Snowflake', category: 'database', aliases: [], related: { 'data-warehouse': 0.6 } },
+  { canonical: 'databricks', display: 'Databricks', category: 'database', aliases: ['delta lake'] },
+  { canonical: 'data-warehouse', display: 'Data Warehousing', category: 'database_admin', aliases: ['data warehouse', 'data warehousing', 'dwh', 'olap'], related: { 'data-modelling': 0.5 } },
+  { canonical: 'dbt', display: 'dbt', category: 'tool', aliases: ['data build tool'] },
+  { canonical: 'graphql', display: 'GraphQL', category: 'framework', aliases: [], related: { 'rest-api': 0.4 } },
+  { canonical: 'microservices', display: 'Microservices', category: 'framework', aliases: ['microservice architecture'] },
+  { canonical: 'observability', display: 'Observability tooling', category: 'tool', aliases: ['grafana', 'prometheus', 'datadog', 'monitoring and alerting'] },
+  { canonical: 'exadata', display: 'Oracle Exadata', category: 'database_admin', aliases: [], related: { 'oracle-dba': 0.3 } },
 
   // --- os ---
   { canonical: 'linux', display: 'Linux', category: 'os', aliases: ['ubuntu', 'rhel', 'centos', 'unix'] },
@@ -240,6 +358,50 @@ export function extractSkills(text: string): string[] {
     if (pattern.test(haystack)) found.add(canonical);
   }
   return [...found];
+}
+
+/**
+ * The same scan as extractSkills, but it keeps the employer's own words.
+ *
+ * This exists because a canonical key is the wrong thing to put on a resume.
+ * A posting that says "RMAN" resolves to the canonical `oracle-rman` whose
+ * display name is "Oracle RMAN", and a posting that says "expdp" resolves to
+ * one whose display name is "Oracle Data Pump" -- but an applicant tracking
+ * system does a literal string search, and a recruiter scanning a stack of
+ * resumes is looking for the token they wrote in the advert. Printing our
+ * display name instead of theirs loses the match even when the candidate
+ * genuinely has the skill, which is the single most expensive thing this app
+ * was doing.
+ *
+ * `surface` is every distinct spelling the posting actually used, in the
+ * posting's own casing, longest first. Nothing here decides whether a term may
+ * be used -- that is `mirror.ts`, and it requires the candidate to hold the
+ * skill. This function only preserves the vocabulary so the decision can be
+ * made at all.
+ */
+export function extractSkillMentions(text: string): { canonical: string; surface: string[] }[] {
+  const flat = text.replace(/\s+/g, ' ');
+  const out = new Map<string, Set<string>>();
+
+  for (const { needle, canonical } of ALIAS_INDEX) {
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(^|[^a-z0-9+#])(${escaped})($|[^a-z0-9+#])`, 'gi');
+    for (const match of flat.matchAll(pattern)) {
+      // match[2] is the literal text as the employer wrote it, casing intact.
+      const literal = match[2];
+      if (!literal) continue;
+      const found = out.get(canonical) ?? new Set<string>();
+      found.add(literal);
+      out.set(canonical, found);
+    }
+  }
+
+  return [...out].map(([canonical, surface]) => ({
+    canonical,
+    // Longest first: a posting saying both "Oracle" and "Oracle Database" should
+    // offer the more specific spelling as the one worth mirroring.
+    surface: [...surface].sort((a, b) => b.length - a.length),
+  }));
 }
 
 /** How much `have` counts toward a requirement for `want`. 1 = exact. */

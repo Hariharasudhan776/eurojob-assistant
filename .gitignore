@@ -13,3 +13,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Local experiment scripts and their output (comparison runs, probes).
+.scratch/

@@ -8,6 +8,10 @@ import { AiClient } from '@/lib/ai/client';
 import { BudgetExceededError } from '@/lib/ai/budget';
 import { TONES, type Tone } from '@/lib/ai/prompts';
 import type { NormalisedJob } from '@/lib/jobs/types';
+import { buildMirrorPlan } from '@/lib/resume/mirror';
+import { auditResume, type ResumeAudit } from '@/lib/resume/audit';
+import { renderResumeText } from '@/lib/docs/render';
+import { jobRowToNormalised as toNormalised } from '@/lib/jobs/from-row';
 
 export const runtime = 'nodejs';
 /**
@@ -114,12 +118,28 @@ export async function POST(request: Request) {
     }
 
     const result = await services.tailorResume(normalised, match);
+
+    // Grade the document that was actually produced, not the profile it came
+    // from. The pre-flight ATS check reports whether the candidate *could*
+    // match this posting; this reports whether the page in front of them
+    // *does* -- which is the question seven rejected applications were really
+    // asking. It is deterministic and free, so it runs on every generation.
+    const mirror = buildMirrorPlan(match.requirements.required, match.requirements.preferred, profile.data);
+    const audit = auditResume(
+      profile.data,
+      result.output,
+      mirror,
+      normalised,
+      renderResumeText(profile.data, result.output)
+    );
+
     await saveDocument({
       userId, jobId, profileId: profile.id, kind: 'resume', tone: null,
-      content: result.output, provenance: { provenance: result.output.provenance, violations: result.violations },
+      content: result.output,
+      provenance: { provenance: result.output.provenance, violations: result.violations, audit },
       model: client.model,
     });
-    return await respond(client, guard, before, result.violations);
+    return await respond(client, guard, before, result.violations, audit);
   } catch (err) {
     if (err instanceof UnauthenticatedError) {
       return NextResponse.json({ error: err.message }, { status: 401 });
@@ -135,7 +155,8 @@ async function respond(
   client: Awaited<ReturnType<typeof aiRuntime>>['client'],
   guard: Awaited<ReturnType<typeof aiRuntime>>['guard'],
   before: number,
-  violations: { severity: string; detail: string }[]
+  violations: { severity: string; detail: string }[],
+  audit?: ResumeAudit
 ) {
   // Spend is written durably BEFORE responding. On a serverless host the process
   // can be frozen the moment the response is sent, and a charge that never
@@ -154,30 +175,8 @@ async function respond(
     spentTodayUsd: guard.spentLast24h(),
     violations,
     blocking: violations.filter((v) => v.severity === 'blocking').length,
+    // Present only for a resume: the recruiter-scan grade for the document just
+    // generated, shown next to the download.
+    audit,
   });
-}
-
-/** Rebuild the normalised shape from a stored row so scoring has one code path. */
-function toNormalised(job: Awaited<ReturnType<typeof getJob>> & object): NormalisedJob {
-  return {
-    sourceSlug: job.source_slug,
-    sourceJobId: String(job.id),
-    url: job.url,
-    title: job.title,
-    company: job.company,
-    country: job.country,
-    city: job.city,
-    remote: job.remote as NormalisedJob['remote'],
-    employmentType: job.employment_type,
-    salaryMin: job.salary_min,
-    salaryMax: job.salary_max,
-    salaryCurrency: job.salary_currency,
-    description: job.description,
-    descriptionComplete: job.description_complete,
-    languages: job.languages ?? [],
-    visaSponsorship: job.visa_sponsorship as NormalisedJob['visaSponsorship'],
-    relocationSupport: job.relocation_support as NormalisedJob['relocationSupport'],
-    postedAt: job.posted_at ? new Date(job.posted_at) : null,
-    raw: {},
-  };
 }

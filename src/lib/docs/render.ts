@@ -96,7 +96,10 @@ export async function renderResume(
   jobTitle: string,
   company: string
 ): Promise<Buffer> {
-  const children: Paragraph[] = [...contactHeader(profile, profile.headline)];
+  // The headline is the first of the four things a recruiter checks, so it is
+  // tailored rather than fixed. It still falls back to the profile's own
+  // headline: an empty or missing targetTitle must not blank the line.
+  const children: Paragraph[] = [...contactHeader(profile, tailored.targetTitle?.trim() || profile.headline)];
 
   children.push(heading('PROFESSIONAL SUMMARY'));
   children.push(plain(tailored.summary, { after: 40 }));
@@ -108,10 +111,27 @@ export async function renderResume(
   const known = new Map(profile.skills.map((s) => [s.name.toLowerCase(), s]));
   const ordered = tailored.skillOrder.map((n) => known.get(n.toLowerCase())).filter((s): s is NonNullable<typeof s> => Boolean(s));
   const remaining = profile.skills.filter((s) => !ordered.includes(s));
+
+  /**
+   * Relabelling, and the third gate.
+   *
+   * A pair may only rename a skill the profile actually holds -- the lookup is
+   * against the same `known` map, so a label for a skill that does not exist is
+   * dropped here even if it survived verification. What it prints is the
+   * employer's own word for something already true, which is what an applicant
+   * tracking system searches for and what a recruiter's eye stops on.
+   */
+  const labels = new Map<string, string>();
+  for (const pair of tailored.skillLabels ?? []) {
+    const key = pair.profileSkill.toLowerCase();
+    if (known.has(key) && pair.printAs.trim()) labels.set(key, pair.printAs.trim());
+  }
+  const label = (name: string): string => labels.get(name.toLowerCase()) ?? name;
+
   const grouped = new Map<string, string[]>();
   for (const skill of [...ordered, ...remaining]) {
     const list = grouped.get(skill.category) ?? [];
-    list.push(skill.name);
+    list.push(label(skill.name));
     grouped.set(skill.category, list);
   }
   const LABELS: Record<string, string> = {
@@ -244,9 +264,14 @@ export async function renderCoverLetter(
 
 /** Plain-text resume for the boxes that make you paste rather than upload. */
 export function renderResumeText(profile: CandidateProfile, tailored: TailoredResume): string {
+  // This is the version pasted into a web form, so it is the one an applicant
+  // tracking system is most likely to read verbatim. It gets the tailored title
+  // and the mirrored skill labels for exactly that reason -- a plain-text export
+  // that quietly reverts to the generic headline would undo the tailoring at the
+  // last step.
   const lines: string[] = [
     profile.name.toUpperCase(),
-    profile.headline,
+    tailored.targetTitle?.trim() || profile.headline,
     [profile.email, profile.phone, profile.links.linkedin, profile.links.github].filter(Boolean).join(' | '),
     profile.location,
     '',
@@ -259,8 +284,15 @@ export function renderResumeText(profile: CandidateProfile, tailored: TailoredRe
   ];
 
   const known = new Map(profile.skills.map((s) => [s.name.toLowerCase(), s]));
+  const labels = new Map<string, string>();
+  for (const pair of tailored.skillLabels ?? []) {
+    const key = pair.profileSkill.toLowerCase();
+    if (known.has(key) && pair.printAs.trim()) labels.set(key, pair.printAs.trim());
+  }
+  const label = (name: string): string => labels.get(name.toLowerCase()) ?? name;
+
   const ordered = tailored.skillOrder.map((n) => known.get(n.toLowerCase())).filter(Boolean);
-  const names = [...new Set([...ordered.map((s) => s!.name), ...profile.skills.map((s) => s.name)])];
+  const names = [...new Set([...ordered.map((s) => label(s!.name)), ...profile.skills.map((s) => label(s.name))])];
   lines.push(names.join(', '), '', 'PROFESSIONAL EXPERIENCE', '');
 
   const byCompany = new Map(tailored.bullets.map((b) => [b.company.toLowerCase(), b.bullets]));

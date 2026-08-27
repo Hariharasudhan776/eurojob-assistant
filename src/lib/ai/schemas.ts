@@ -23,8 +23,26 @@ export const MatchSummary = z.object({
 export type MatchSummary = z.infer<typeof MatchSummary>;
 
 export const TailoredResume = z.object({
+  /**
+   * The line under the candidate's name. Mirrors the advertised role when the
+   * experience supports it -- the first of the four things a recruiter checks in
+   * their six-second pass, and previously not tailored at all.
+   */
+  targetTitle: z.string().min(1),
   summary: z.string().min(1),
   skillOrder: z.array(z.string().min(1)),
+  /**
+   * Relabels: print the employer's word for a skill the profile holds under a
+   * different name. `profileSkill` must exist in the profile, which is what
+   * keeps this a relabel rather than an addition -- render.ts drops any pair
+   * whose profileSkill it cannot find.
+   */
+  skillLabels: z.array(
+    z.object({
+      profileSkill: z.string().min(1),
+      printAs: z.string().min(1),
+    })
+  ),
   bullets: z.array(
     z.object({
       company: z.string().min(1),
@@ -32,6 +50,8 @@ export const TailoredResume = z.object({
     })
   ),
   projectOrder: z.array(z.string()),
+  /** Posting terms the output claims to contain. Audited against the document. */
+  keywordsUsed: z.array(z.string()),
   emphasis: z.array(z.string()),
   /** Rewritten text mapped back to the original it came from. Audited. */
   provenance: z.array(

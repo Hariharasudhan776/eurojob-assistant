@@ -83,6 +83,35 @@ function contactHeader(profile: CandidateProfile, headline: string): Paragraph[]
 }
 
 /**
+ * How much of the skills list a tailored resume should actually print.
+ *
+ * The model is asked to rank the candidate's skills by relevance and to record
+ * what it left out, and it does that well: on a Database Administrator posting
+ * both providers ranked 14-18 skills and listed the rest under `omitted`. The
+ * renderer then appended every remaining skill anyway, so the printed line came
+ * out at 43 entries and carried C, C++, Pharmacy systems and e-Governance onto
+ * a DBA application. The selection was made and then quietly discarded.
+ *
+ * A long skills line is not free. It reads as automated to the human screen, it
+ * dilutes the terms the employer actually searched for, and it pushes the
+ * experience section further down the page -- the opposite of what tailoring is
+ * for.
+ *
+ * So the ranking is honoured. The floor exists only for the degenerate case: if
+ * a model returns a very short ranking, the section still needs enough substance
+ * to be worth having, and the next few skills in profile order are the least bad
+ * filler available. Nothing is deleted anywhere -- every skill remains in the
+ * profile, and the model records what it set aside.
+ */
+const MIN_PRINTED_SKILLS = 16;
+
+export function selectSkills<T>(ordered: T[], all: T[]): T[] {
+  const remaining = all.filter((s) => !ordered.includes(s));
+  const shortfall = Math.max(0, MIN_PRINTED_SKILLS - ordered.length);
+  return remaining.slice(0, shortfall);
+}
+
+/**
  * Render a tailored resume.
  *
  * The AI reorders and rephrases; this function only lays out. Crucially, bullets
@@ -110,7 +139,7 @@ export async function renderResume(
   // profile cannot reach the page even if verification were bypassed.
   const known = new Map(profile.skills.map((s) => [s.name.toLowerCase(), s]));
   const ordered = tailored.skillOrder.map((n) => known.get(n.toLowerCase())).filter((s): s is NonNullable<typeof s> => Boolean(s));
-  const remaining = profile.skills.filter((s) => !ordered.includes(s));
+  const remaining = selectSkills(ordered, profile.skills);
 
   /**
    * Relabelling, and the third gate.
@@ -291,8 +320,12 @@ export function renderResumeText(profile: CandidateProfile, tailored: TailoredRe
   }
   const label = (name: string): string => labels.get(name.toLowerCase()) ?? name;
 
+  // Same selection as the DOCX: the model's ranking is honoured rather than
+  // overridden by appending everything else.
   const ordered = tailored.skillOrder.map((n) => known.get(n.toLowerCase())).filter(Boolean);
-  const names = [...new Set([...ordered.map((s) => label(s!.name)), ...profile.skills.map((s) => label(s.name))])];
+  const names = [
+    ...new Set([...ordered, ...selectSkills(ordered, profile.skills)].map((s) => label(s!.name))),
+  ];
   lines.push(names.join(', '), '', 'PROFESSIONAL EXPERIENCE', '');
 
   const byCompany = new Map(tailored.bullets.map((b) => [b.company.toLowerCase(), b.bullets]));

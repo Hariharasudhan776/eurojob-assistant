@@ -6,6 +6,7 @@ import { extractSkillMentions, extractSkills, display } from '../src/lib/match/t
 import { scoreJob } from '../src/lib/match/score.ts';
 import { buildMirrorPlan, forbiddenBriefing, mirrorBriefing } from '../src/lib/resume/mirror.ts';
 import { auditResume } from '../src/lib/resume/audit.ts';
+import { selectSkills } from '../src/lib/docs/render.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import type { NormalisedJob } from '../src/lib/jobs/types.ts';
 
@@ -237,4 +238,21 @@ test('modern data-platform terms are visible so their absence is reported', () =
   for (const term of ['terraform', 'kafka', 'snowflake']) {
     assert.ok(gapNames.includes(term), `${term} should be reported as a gap, got ${gapNames.join(', ')}`);
   }
+});
+
+test("the model's skill selection is honoured, not overridden", () => {
+  // Both providers ranked 14-18 relevant skills out of 43 and recorded the rest
+  // as omitted. The renderer used to append every remaining skill regardless,
+  // so a Database Administrator application carried C, C++, Pharmacy systems
+  // and e-Governance on its skills line.
+  const all = Array.from({ length: 43 }, (_, i) => `skill-${i}`);
+  const ranked = all.slice(0, 14);
+
+  const filler = selectSkills(ranked, all);
+  assert.equal(ranked.length + filler.length, 16, 'a 14-item ranking should be topped up to the floor only');
+  assert.ok(!filler.includes('skill-14') === false, 'filler comes from profile order');
+
+  // A ranking already past the floor is printed as-is, with nothing appended.
+  const longRanking = all.slice(0, 20);
+  assert.deepEqual(selectSkills(longRanking, all), [], 'nothing should be appended to a full ranking');
 });

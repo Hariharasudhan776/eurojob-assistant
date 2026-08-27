@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { facetCounts, listJobs, type JobFilters } from '@/lib/db/repo';
+import { NoProfileNotice } from '@/components/NoProfileNotice';
+import { facetCounts, listJobs, type JobFilters, cvTextFor, latestProfile } from '@/lib/db/repo';
 import { currentUserId } from '@/lib/session';
 import { countryName } from '@/lib/jobs/types';
 import { roleLabel } from '@/lib/match/roles';
@@ -40,6 +41,11 @@ export default async function JobsPage({
 
   const userId = await currentUserId();
   const [{ rows, total }, facets] = await Promise.all([listJobs(userId, filters), facetCounts()]);
+
+  // Scores are per profile. An account without one gets an em dash on every card
+  // and nothing ranked, which reads as a broken app rather than an unfinished
+  // setup -- so say which it is.
+  const [profile, storedCv] = await Promise.all([latestProfile(userId), cvTextFor(userId)]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const linkWith = (overrides: Record<string, string | undefined>) => {
@@ -58,6 +64,7 @@ export default async function JobsPage({
 
   return (
     <div className="space-y-6">
+      {!profile && <NoProfileNotice hasCv={Boolean(storedCv)} />}
       <div className="animate-rise">
         <h1 className="font-display text-3xl font-extrabold">
           <span className="text-gradient">{total.toLocaleString()}</span> jobs

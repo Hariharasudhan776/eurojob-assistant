@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import { NoProfileNotice } from '@/components/NoProfileNotice';
 import { isReady } from '@/lib/db/pool';
-import { dashboardStats, facetCounts, listJobs, scoreBuckets } from '@/lib/db/repo';
+import { dashboardStats, facetCounts, listJobs, scoreBuckets, cvTextFor, latestProfile } from '@/lib/db/repo';
 import { currentUserId } from '@/lib/session';
 import { countryName } from '@/lib/jobs/types';
 import { roleLabel } from '@/lib/match/roles';
@@ -14,6 +15,8 @@ export default async function Dashboard() {
   if (!ready.ready) return <SetupNeeded reason={ready.reason ?? 'unknown'} />;
 
   const userId = await currentUserId();
+  // Same reason as the Jobs page: no profile means no scores anywhere.
+  const [dashProfile, dashCv] = await Promise.all([latestProfile(userId), cvTextFor(userId)]);
   const [stats, top, facets, buckets] = await Promise.all([
     dashboardStats(userId),
     listJobs(userId, { minScore: 70, limit: 6 }),
@@ -30,6 +33,7 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-8">
+      {!dashProfile && <NoProfileNotice hasCv={Boolean(dashCv)} />}
       {/* Hero */}
       <div className="animate-rise">
         <p className="text-sm font-semibold uppercase tracking-widest text-[var(--color-muted)]">Your job search</p>

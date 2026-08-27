@@ -15,6 +15,7 @@ import {
 } from './prompts.ts';
 import { verifyClaims, verifyProvenance, type Violation } from './verify.ts';
 import { buildMirrorPlan } from '../resume/mirror.ts';
+import { PROFILE_DRAFT_SYSTEM, ProfileDraft, profileDraftPrompt } from '../resume/draft.ts';
 
 /**
  * The AI services, one per pipeline stage (spec §18).
@@ -182,6 +183,40 @@ export class AiServices {
       ...leakViolations,
     ];
     return { output, violations, safe: violations.every((v) => v.severity !== 'blocking') };
+  }
+
+  /**
+   * Read a CV into a draft profile for the person to check.
+   *
+   * The odd one out in this class, and deliberately so. Every other service here
+   * generates text FROM a profile and is verified against it; this one has no
+   * profile to verify against, because producing the first one is the job.
+   *
+   * So the safeguard is different in kind: nothing this returns is saved. It is
+   * a `ProfileDraft`, a type nothing else in the application accepts, and it can
+   * only become a profile by passing through a review screen where a person
+   * confirms each field. The model does the typing; the human remains the source
+   * of truth, which is the same rule the JSON upload enforced — only now the
+   * user is not the one doing the typing.
+   *
+   * `stableContext` is empty here for the same reason: the profile is the
+   * output, not the input, so there is nothing stable to cache across calls.
+   */
+  async draftProfileFromCv(cvText: string): Promise<ProfileDraft> {
+    return this.ai.complete({
+      kind: 'profile-draft',
+      // Keyed on the document itself, so re-uploading the same CV after a failed
+      // review costs nothing.
+      cacheKey: hashKey('profile-draft-v1', cvText),
+      system: PROFILE_DRAFT_SYSTEM,
+      stableContext: '',
+      prompt: profileDraftPrompt(cvText),
+      schema: ProfileDraft,
+      // A full CV with an evidence line and a source quote per skill is a large
+      // structured output; 8192 truncated a 40-skill draft mid-array.
+      maxTokens: 16000,
+      effort: 'medium',
+    });
   }
 
   async writeCoverLetter(job: NormalisedJob, match: MatchResult, tone: Tone): Promise<Verified<CoverLetter>> {

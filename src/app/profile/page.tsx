@@ -2,6 +2,7 @@ import { latestProfile, unscoredJobs } from '@/lib/db/repo';
 import { currentUserId } from '@/lib/session';
 import { Card, Pill } from '@/components/ui';
 import { ProfileTools } from '@/components/ProfileTools';
+import { CvImport } from '@/components/CvImport';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,19 +25,23 @@ export default async function ProfilePage() {
 
   if (!profile) {
     return (
-      <Card title="No profile yet">
-        <p className="text-sm text-[var(--color-muted)]">
-          Nothing can be scored or written without one. Upload yours as JSON —{' '}
-          <a href="/api/profile/template" className="text-[var(--color-accent)]">
-            start from the template
-          </a>
-          . Locally you can also drop a file in <code className="text-[var(--color-fg)]">data/</code> and run{' '}
-          <code className="text-[var(--color-fg)]">npm run db:migrate</code>.
-        </p>
-        <div className="mt-4">
-          <ProfileTools version={0} unscored={0} />
-        </div>
-      </Card>
+      <div className="space-y-4">
+        <Card title="Start with your CV">
+          <CvImport />
+        </Card>
+        <Card title="Or upload a profile as JSON">
+          <p className="text-sm text-[var(--color-muted)]">
+            The long way round, kept for anyone who wants exact control —{' '}
+            <a href="/api/profile/template" className="text-[var(--color-accent)]">
+              start from the template
+            </a>
+            .
+          </p>
+          <div className="mt-4">
+            <ProfileTools version={0} unscored={0} />
+          </div>
+        </Card>
+      </div>
     );
   }
 
@@ -109,6 +114,10 @@ export default async function ProfilePage() {
           ))}
         </Card>
       )}
+
+      <Card title="Replace this from a CV">
+        <CvImport />
+      </Card>
 
       <Card title="Editing this">
         <p className="text-sm text-[var(--color-muted)]">

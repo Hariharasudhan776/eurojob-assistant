@@ -24,11 +24,11 @@ import type { NormalisedJob } from '../src/lib/jobs/types.ts';
  * not a line in a prompt.
  */
 
-// v4 is the live profile: v3 plus the skills his own experience bullets already
+// v5 is the live profile: v3 plus the skills his own experience bullets already
 // evidenced but the skills list never captured (stored procedures and triggers,
 // production support, root cause analysis, SDLC, requirements gathering,
 // stakeholder management, data quality, forecasting).
-const profile = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.v4.json', 'utf8')));
+const profile = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.v5.json', 'utf8')));
 
 const dbaJob = (description: string, title = 'Senior Oracle Database Administrator'): NormalisedJob => ({
   sourceSlug: 'test',

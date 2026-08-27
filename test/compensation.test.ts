@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractSalary, formatSalary, sponsorshipEvidence } from '../src/lib/jobs/compensation.ts';
+import { extractSalary, formatSalary, formatSalaryUsd, sponsorshipEvidence } from '../src/lib/jobs/compensation.ts';
 
 /**
  * Pay and sponsorship read out of the posting text.
@@ -77,4 +77,26 @@ test('sponsorship evidence quotes the posting rather than summarising it', () =>
 test('repeated boilerplate is quoted once', () => {
   const text = 'We offer visa sponsorship. Some other line. We offer visa sponsorship.';
   assert.equal(sponsorshipEvidence(text).quotes.length, 1);
+});
+
+test('conversion to USD keeps the shape and marks itself approximate', () => {
+  const eur = extractSalary('Salary of €65,000 - €80,000 per year.')!;
+  assert.equal(formatSalaryUsd(eur), '≈$70,850 – $87,200 per year');
+
+  // Dollars are not approximated to themselves.
+  const usd = extractSalary('The range is $120,000 to $150,000 annually.')!;
+  assert.equal(formatSalaryUsd(usd), '$120,000 – $150,000 per year');
+
+  // A ceiling stays a ceiling through the conversion.
+  const capped = extractSalary('Compensation up to 90,000 EUR.')!;
+  assert.match(formatSalaryUsd(capped) ?? '', /^up to ≈\$98,100$/);
+});
+
+test('an unlabelled figure is never assumed to be dollars', () => {
+  // "60,000" in a German advert with no currency mark would be understated by
+  // nearly ten percent if it were simply printed with a dollar sign.
+  const noCurrency = extractSalary('The annual salary for this position is 60,000.');
+  assert.ok(noCurrency, 'a pay word plus a figure is still a salary');
+  assert.equal(noCurrency.currency, null);
+  assert.equal(formatSalaryUsd(noCurrency), null, 'no currency means no conversion');
 });

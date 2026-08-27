@@ -9,8 +9,9 @@ import { Bar, Card, Pill, RecommendationPill, ScoreBadge, SponsorshipPill } from
 import { AtsCard } from '@/components/AtsCard';
 import { KeywordGaps } from '@/components/KeywordGaps';
 import { CompensationCard } from '@/components/CompensationCard';
+import { htmlToText } from '@/lib/jobs/parse';
 import { BackButton } from '@/components/BackButton';
-import { extractSalary, sponsorshipEvidence } from '@/lib/jobs/compensation';
+import { extractSalary, formatSalary, formatSalaryUsd, sponsorshipEvidence, toUsd } from '@/lib/jobs/compensation';
 import { buildMirrorPlan } from '@/lib/resume/mirror';
 import { scoreJob } from '@/lib/match/score';
 import { jobRowToNormalised } from '@/lib/jobs/from-row';
@@ -84,6 +85,32 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
   const salary = extractSalary(job.description ?? '');
   const sponsorship = sponsorshipEvidence(job.description ?? '');
 
+  /**
+   * Pay for the header, in US dollars.
+   *
+   * Dollars because bands arrive in a dozen currencies and cannot be compared at
+   * a glance otherwise. The original is still shown in the Pay & sponsorship
+   * card below: the posting's own figure is the fact, and the conversion is a
+   * convenience laid over it.
+   *
+   * The source's structured field is used when it has one, and the text is read
+   * when it does not -- which is the common case, since most postings state pay
+   * only in prose.
+   */
+  const headlineSalary = (() => {
+    if (job.salary_min || job.salary_max) {
+      const currency = job.salary_currency ?? null;
+      const lo = job.salary_min ? toUsd(job.salary_min, currency) : null;
+      const hi = job.salary_max ? toUsd(job.salary_max, currency) : null;
+      const usd = (v: number) => `$${v.toLocaleString('en-GB')}`;
+      const approx = currency && currency.toUpperCase() !== 'USD' ? '≈' : '';
+      if (lo !== null && hi !== null) return `${approx}${usd(lo)} – ${usd(hi)}`;
+      if (lo !== null || hi !== null) return `${approx}${usd((lo ?? hi)!)}`;
+    }
+    if (salary) return formatSalaryUsd(salary) ?? formatSalary(salary);
+    return 'not stated';
+  })();
+
   const liveMatch = profile ? scoreJob(profile.data, jobRowToNormalised(job), { preferredCountries: [] }) : null;
   const mirror =
     profile && liveMatch
@@ -101,20 +128,36 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
             <p className="mt-1 text-sm text-[var(--color-muted)]">
               {job.company}
               {job.city ? ` — ${job.city}` : ''}
-              {job.country ? `, ${countryName(job.country)}` : ''} · {job.remote}
-              {job.employment_type ? ` · ${job.employment_type}` : ''}
+              {/* Country is always stated. "Not stated" is information too --
+                  silently omitting it read as though the job had no location. */}
+              {job.country ? `, ${countryName(job.country)}` : ', country not stated'}
             </p>
+
+            {/* The three facts that decide whether to read on, on their own line
+                so they are not lost among the classification pills. Each renders
+                even when the posting is silent, because "not stated" is an
+                answer and a missing row is not. */}
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span>
+                <span className="text-[var(--color-muted)]">Salary </span>
+                <span className="tnum font-bold text-[var(--color-good)]">{headlineSalary}</span>
+              </span>
+              <span>
+                <span className="text-[var(--color-muted)]">Type </span>
+                <span className="font-semibold">{employmentLabel(job.employment_type)}</span>
+              </span>
+              <span>
+                <span className="text-[var(--color-muted)]">Working mode </span>
+                <span className="font-semibold">{job.remote ?? 'not stated'}</span>
+              </span>
+            </div>
+
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <RecommendationPill value={job.recommendation} />
               {job.role_category && <Pill tone="accent">{roleLabel(job.role_category)}</Pill>}
               <SponsorshipPill value={job.visa_sponsorship} />
               {job.relocation_support === 'yes' && <Pill tone="good">relocation support</Pill>}
               {job.languages?.length ? <Pill>needs {job.languages.join(', ')}</Pill> : <Pill>no language stated</Pill>}
-              {job.salary_min || job.salary_max ? (
-                <Pill tone="accent">
-                  {job.salary_min ?? '?'}–{job.salary_max ?? '?'} {job.salary_currency ?? ''}
-                </Pill>
-              ) : null}
               <Pill>from {job.source_slug}</Pill>
             </div>
           </div>
@@ -253,8 +296,10 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
       <JobActions jobId={job.id} currentStage={job.stage} notes={job.notes} />
 
       <Card title="Original description">
+        {/* Tags stripped: several sources store raw HTML, and this panel was
+            rendering "<li><strong>..." at the reader instead of the posting. */}
         <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[var(--color-fg)]/80">
-          {job.description}
+          {htmlToText(job.description ?? '')}
         </pre>
         {!job.description_complete && (
           <p className="mt-2 text-xs text-[var(--color-warn)]">
@@ -299,4 +344,32 @@ function Row({ label, value }: { label: string; value: string }) {
       <dd className="text-right">{value}</dd>
     </div>
   );
+}
+
+/**
+ * Full time, part time, contract -- or plainly "not stated".
+ *
+ * Sources spell this a dozen ways (`full_time`, `FULL_TIME`, `permanent`), and
+ * most of them omit it entirely. It used to be hidden whenever it was missing,
+ * which left the reader unable to tell a full-time role from one the posting had
+ * simply not described.
+ */
+function employmentLabel(raw: string | null): string {
+  if (!raw) return 'not stated';
+  const key = raw.toLowerCase().replace(/[\s-]+/g, '_');
+  const known: Record<string, string> = {
+    full_time: 'full time',
+    fulltime: 'full time',
+    permanent: 'full time (permanent)',
+    part_time: 'part time',
+    parttime: 'part time',
+    contract: 'contract',
+    contractor: 'contract',
+    temporary: 'temporary',
+    internship: 'internship',
+    apprenticeship: 'apprenticeship',
+    freelance: 'freelance',
+    working_student: 'working student',
+  };
+  return known[key] ?? raw.replace(/_/g, ' ');
 }

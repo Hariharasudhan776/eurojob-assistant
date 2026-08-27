@@ -1,5 +1,5 @@
 import type { SalaryFinding, SponsorshipFinding } from '@/lib/jobs/compensation';
-import { formatSalary } from '@/lib/jobs/compensation';
+import { formatSalary, formatSalaryUsd, USD_RATES_AS_OF } from '@/lib/jobs/compensation';
 
 /**
  * Pay and sponsorship, with the posting's own words underneath.
@@ -51,9 +51,19 @@ export function CompensationCard({
       {(salary || hasStructured) && (
         <div className="mt-4">
           <p className="text-xs font-semibold text-[var(--color-muted)]">Salary</p>
+
+          {/* Dollars lead, because bands arrive in a dozen currencies and cannot
+              be compared at a glance otherwise. The posting's own figure stays
+              directly underneath: that is the fact, and the conversion is a
+              convenience laid over it at a rate that is fixed, not live. */}
           <p className="tnum mt-1 text-xl font-bold text-[var(--color-good)]">
-            {salary ? formatSalary(salary) : formatStructured(structured!)}
+            {(salary && formatSalaryUsd(salary)) ?? (salary ? formatSalary(salary) : formatStructured(structured!))}
           </p>
+          {salary && formatSalaryUsd(salary) && salary.currency !== 'USD' && (
+            <p className="tnum mt-0.5 text-xs text-[var(--color-muted)]">
+              As posted: {formatSalary(salary)} · converted at {USD_RATES_AS_OF} rates
+            </p>
+          )}
 
           {salary && (
             <blockquote className="mt-2 border-l-2 border-[var(--color-good)]/50 pl-3 text-xs italic text-[var(--color-muted)]">

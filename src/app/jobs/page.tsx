@@ -4,7 +4,7 @@ import { currentUserId } from '@/lib/session';
 import { countryName } from '@/lib/jobs/types';
 import { roleLabel } from '@/lib/match/roles';
 import { Card, GradientButton, Pill, RecommendationPill, ScoreRing, SponsorshipPill } from '@/components/ui';
-import { extractSalary, formatSalary } from '@/lib/jobs/compensation';
+import { extractSalary, formatSalary, formatSalaryUsd, toUsd } from '@/lib/jobs/compensation';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,11 +183,19 @@ export default async function JobsPage({
  * cards, without a migration or a re-sync.
  */
 function salaryPill(job: { salary_min: number | null; salary_max: number | null; salary_currency: string | null; description: string | null }) {
+  // Dollars on the card so bands from different countries line up at a glance.
+  // The posting's own currency is on the job page, next to the sentence it came
+  // from -- the list is for comparing, the detail page is for reading.
   if (job.salary_min || job.salary_max) {
-    const money = (v: number) => `${job.salary_currency ? `${job.salary_currency} ` : ''}${v.toLocaleString('en-GB')}`;
-    const text = job.salary_min && job.salary_max ? `${money(job.salary_min)} – ${money(job.salary_max)}` : money(job.salary_min ?? job.salary_max ?? 0);
+    const usd = (v: number) => `$${(toUsd(v, job.salary_currency) ?? v).toLocaleString('en-GB')}`;
+    const approx = job.salary_currency && job.salary_currency.toUpperCase() !== 'USD' ? '≈' : '';
+    const text =
+      job.salary_min && job.salary_max
+        ? `${approx}${usd(job.salary_min)} – ${usd(job.salary_max)}`
+        : `${approx}${usd(job.salary_min ?? job.salary_max ?? 0)}`;
     return <Pill tone="good">{text}</Pill>;
   }
   const found = extractSalary(job.description ?? '');
-  return found ? <Pill tone="good">{formatSalary(found)}</Pill> : null;
+  if (!found) return null;
+  return <Pill tone="good">{formatSalaryUsd(found) ?? formatSalary(found)}</Pill>;
 }

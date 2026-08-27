@@ -171,6 +171,13 @@ export function totalExperienceMonths(experience: Experience[], asOf = new Date(
       ? (role.endDate.split('-').map(Number) as [number, number])
       : ([asOf.getUTCFullYear(), asOf.getUTCMonth() + 1] as [number, number]);
 
+    // A date the schema would reject ("2020" with no month) yields NaN, and the
+    // loop below would never terminate: NaN + 1 is NaN, which is never > 12.
+    // The schema normally prevents that, but this function is also called on
+    // not-yet-validated input (an uploaded profile), so it defends itself
+    // rather than trusting the caller to have checked first.
+    if (![startYear, startMonth, end[0], end[1]].every(Number.isFinite)) continue;
+
     let year = startYear;
     let month = startMonth;
     while (year < end[0] || (year === end[0] && month <= end[1])) {

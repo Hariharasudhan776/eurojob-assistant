@@ -11,8 +11,10 @@ import {
 /**
  * Adzuna — https://developer.adzuna.com
  *
- * Broad European coverage (DE, NL, AT, CH, FR, IT, ES, PL, GB) behind a free
- * API key. Two properties of this API shape the implementation:
+ * Twenty-one country endpoints behind a free API key -- Europe plus the US,
+ * Canada, Australia, New Zealand, South Africa, Singapore, India, Brazil,
+ * Mexico, Russia and Argentina. Two properties of this API shape the
+ * implementation:
  *
  *  1. **Descriptions are truncated to 500 characters.** Verified against the
  *     live API: every result comes back capped. So jobs from this source are
@@ -28,7 +30,7 @@ import {
  *
  * Request budget matters: the free tier is limited per day, so this issues ONE
  * request per country per page using `what_or` rather than one per job title.
- * Twelve countries at two pages each is ~24 calls per run.
+ * Twenty-one countries at two pages each is ~42 calls per run.
  */
 
 interface AdzunaJob {
@@ -52,19 +54,43 @@ interface AdzunaResponse {
   results?: AdzunaJob[];
 }
 
-/** Adzuna country endpoints that matter for a European search. */
+/**
+ * Every country endpoint Adzuna operates, not just the European ones.
+ *
+ * The app used to ask for ten European countries because the search itself was
+ * European. The search is global now, so the source offers everything it can
+ * reach and the *user* decides what to look at with the country filter. Adding
+ * the rest cost nothing but a longer list -- the request budget is controlled by
+ * MAX_PAGES_PER_COUNTRY and the per-country cap, not by the number of endpoints.
+ */
 const COUNTRY_ENDPOINTS: Record<string, string> = {
-  DE: 'de', NL: 'nl', AT: 'at', CH: 'ch', FR: 'fr',
-  IT: 'it', ES: 'es', PL: 'pl', GB: 'gb', BE: 'be',
+  // Europe
+  GB: 'gb', DE: 'de', NL: 'nl', FR: 'fr', PL: 'pl', AT: 'at', BE: 'be', CH: 'ch',
+  IT: 'it', ES: 'es',
+  // Americas, Asia-Pacific, Africa
+  US: 'us', CA: 'ca', AU: 'au', NZ: 'nz', ZA: 'za', SG: 'sg', IN: 'in',
+  BR: 'br', MX: 'mx',
+  // Observed on a live run: these two answer HTTP 404 today, although Adzuna
+  // documents them. They are kept rather than quietly dropped -- if the
+  // endpoints come back, the coverage returns with them -- and the 404 shows up
+  // as a source warning on the Settings page rather than as a silent gap.
+  RU: 'ru', AR: 'ar',
 };
 
 /** Local currency per endpoint. Adzuna reports annual figures with no currency field. */
 const CURRENCY: Record<string, string> = {
   de: 'EUR', nl: 'EUR', at: 'EUR', fr: 'EUR', it: 'EUR', es: 'EUR', be: 'EUR',
   ch: 'CHF', pl: 'PLN', gb: 'GBP',
+  us: 'USD', ca: 'CAD', au: 'AUD', nz: 'NZD', za: 'ZAR', sg: 'SGD', in: 'INR',
+  br: 'BRL', mx: 'MXN', ru: 'RUB', ar: 'ARS',
 };
 
-const MAX_PAGES_PER_COUNTRY = 2;
+/**
+ * Request budget. Twenty-one countries at two pages each is ~42 calls per run,
+ * which the free tier absorbs; ADZUNA_MAX_PAGES exists for anyone whose quota is
+ * tighter or who wants to sweep deeper.
+ */
+const MAX_PAGES_PER_COUNTRY = Math.max(1, Number(process.env.ADZUNA_MAX_PAGES || 2));
 const RESULTS_PER_PAGE = 50;
 
 export class AdzunaSource implements JobSource {

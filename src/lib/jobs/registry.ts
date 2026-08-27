@@ -3,12 +3,19 @@ import type { JobQuery, JobSource, NormalisedJob } from './types.ts';
 import { contentHash } from './parse.ts';
 import { ArbeitnowSource } from './sources/arbeitnow.ts';
 import { AdzunaSource } from './sources/adzuna.ts';
+import { TheMuseSource } from './sources/themuse.ts';
 
 /**
  * Source registry. Adding a source means adding one line here (spec §5) --
  * nothing downstream knows how many there are.
+ *
+ * Arbeitnow: no key, strong German and EU coverage.
+ * Adzuna: free key, 21 country endpoints, but 500-character descriptions.
+ * The Muse: no key, full descriptions, and the only source covering IRELAND --
+ * which Adzuna does not serve at all and which matters most for a non-EU
+ * candidate needing sponsorship.
  */
-export const SOURCES: JobSource[] = [new ArbeitnowSource(), new AdzunaSource()];
+export const SOURCES: JobSource[] = [new ArbeitnowSource(), new AdzunaSource(), new TheMuseSource()];
 
 export interface CollectionReport {
   jobs: NormalisedJob[];

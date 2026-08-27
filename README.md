@@ -1,8 +1,10 @@
-# EuroJob Assistant
+# Job Assistant
 
-**A personal European job-search assistant: collects real postings, scores them against your actual resume with explainable arithmetic, and writes tailored resumes and cover letters that cannot claim anything you can't back up.**
+**A job-search assistant: collects real postings from around the world, scores them against your actual resume with explainable arithmetic, and writes tailored resumes and cover letters that cannot claim anything you can't back up.**
 
-Runs on your own machine. Your resume, your API key, your database, no third party involved.
+Runs on your own machine, or on a host you control. Several people can share one
+instance and see nothing of each other's: separate profiles, separate scores,
+separate documents, separate AI spend.
 
 ---
 
@@ -20,28 +22,56 @@ Open `.env` and fill in **three** things (everything else has a working default)
 | Variable | Where to get it | Needed for |
 |---|---|---|
 | `PGPASSWORD` | your local PostgreSQL password (leave blank if your `pg_hba.conf` says `trust`) | everything |
+| `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` | signing in |
 | `ANTHROPIC_API_KEY` | [platform.claude.com](https://platform.claude.com) → API keys | AI features only |
 | `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` | [developer.adzuna.com](https://developer.adzuna.com) — free | more job coverage (optional) |
 
 Then:
 
 ```bash
-npm run db:migrate     # creates the database, applies the schema, loads your profile
+npm run db:migrate     # creates the database, applies both migrations, loads any local profile
 npm run sync           # collects and scores real jobs — costs nothing
 npm run dev            # open http://localhost:3000
 ```
 
-`npm run sync` uses **no AI and costs nothing**. It found 732 jobs on the first run here.
+Open the app and **create an account**: an email, a password, and your profile as
+JSON (there is a template linked on the page). Everything else follows from that
+profile — there is nothing to score against without it.
+
+Deploying it instead? [DEPLOY.md](DEPLOY.md) covers Neon and Vercel.
+
+`npm run sync` uses **no AI and costs nothing**. It found 732 jobs on the first run here, when it was still restricted to Europe.
 
 ---
+
+## Accounts, and what is shared
+
+**Jobs are shared. Everything derived from a person is not.**
+
+A posting is public data, and fetching every job board once per account would multiply the requests for identical results. So the feed is collected once, for everyone.
+
+Scores are not shared, because a score is a statement about one person: every match records the profile version that produced it, and every query that reads a match joins through the caller's own profile. Applications, generated documents, notifications and AI spend are the same. There is no query shape in `repo.ts` that can return another user's data — isolation is structural, not a filter someone has to remember to add.
+
+Signing up takes an email, a password, and a profile JSON file. The profile is required at signup rather than optional afterwards, because there is nothing to score against, no evidence to write from, and no dashboard to show without one.
+
+Two commands you may need:
+
+```bash
+npm run user:password -- you@example.com "a long passphrase"   # set or reset a password
+npm run db:copy -- --write                                     # copy a local database to a managed one
+```
+
+The first is also how you adopt the account the CLI created before sign-in existed: it owns the profile and history from that era, and setting a password keeps all of it rather than abandoning it behind an account nobody can reach.
 
 ## The three commands you will actually use
 
 ```bash
-npm run sync                    # refresh jobs and scores. Free. Run it daily.
+npm run sync                    # refresh jobs, score for every user. Free. Run it daily.
 npm run sync -- --explain 5     # also write verdicts for the top 5. About $0.05 total.
 npm run dev                     # the web app
 ```
+
+`sync` scores the whole feed against **every** registered profile, because scoring is arithmetic and costs nothing. `--explain` spends money, so it runs for one user — `APP_USER_EMAIL` by default, or `--user someone@example.com` — and is charged to that person's own daily cap.
 
 Everything else happens in the browser.
 
@@ -76,13 +106,15 @@ Three caps, all checked **before** a request is sent:
 
 ```
 AI_MAX_RUN_USD=0.50     one command can never spend more than this
-AI_MAX_DAILY_USD=2.00   all runs together, rolling 24 hours
+AI_MAX_DAILY_USD=2.00   PER USER, rolling 24 hours
 AI_MAX_CALL_USD=0.35    absurdity check on a single request
 ```
 
-Hitting a cap aborts and tells you which one. Work already done is kept and cached, so re-running picks up where it stopped **for free**. The daily figure lives in `data/ai-spend.json`, not in memory, so separate commands can't each start from zero. Watch it on the **Settings** page.
+Hitting a cap aborts and tells you which one. Work already done is kept and cached, so re-running picks up where it stopped **for free**.
 
-Every AI answer is cached on disk by content. Re-analysing a job you already analysed costs nothing, and the same posting arriving from a second job board reuses the first answer.
+The daily cap is **per user**, not per instance: every account has its own $2 a day, so one person generating tailored resumes all afternoon cannot spend anyone else's allowance. Spend lives in the `ai_spend` table — one row per billed call — rather than in memory or a JSON file, so separate commands can't each start from zero and a host with no writable disk can't quietly lose the cap. Each charge is written **before** the response is sent, because a serverless function can be frozen the moment it responds and an unrecorded charge is a cap that stopped applying. Watch it on the **Settings** page.
+
+Every AI answer is cached by content hash — on disk locally, in the `ai_cache` table when the host has no writable disk. Re-analysing a job you already analysed costs nothing, and the same posting arriving from a second job board reuses the first answer.
 
 ---
 
@@ -115,6 +147,7 @@ The AI layer sits **after** this. It explains and writes; it never scores and ne
 - **Visa sponsorship is three-valued.** `yes` / `no` / `not specified`. "Not specified" is the most common answer and it means *ask*, not *rejected*. An explicit "we cannot sponsor" is a blocker that caps the recommendation however good the technical fit.
 - **Language requirements written in German are detected.** `Du kommunizierst sicher auf Deutsch und Englisch (mind. C1)` is a hard C1 German requirement. An English-only keyword list misses it, and for a search aimed at Germany that is most of the market. "Deutschland Ticket" in a benefits list is correctly *not* treated as a language requirement.
 - **Truncated postings are marked.** Adzuna returns only the first 500 characters. Those jobs are flagged low-confidence and the app refuses to report "missing skills" for them, because a requirement absent from a snippet is not an absent requirement.
+- **The role filter reads titles, not keywords.** "Senior Database Reliability Engineer" is a database job, not an SRE one; `PL/SQL`, `PL-SQL` and `PL SQL` are the same job; `Softwareentwickler` and `Datenbankadministrator` are classified rather than dumped in "other". And `role_category` being NULL ("never classified") is kept distinct from `other` ("classified, fits nothing named") — the same discipline as "no sponsorship" versus "sponsorship not stated".
 
 ---
 
@@ -147,7 +180,9 @@ A verifier that fires on honest text is worse than none, because a wall of false
 
 **Dashboard** — counts, and your best matches.
 
-**Jobs** — filter by score, country, working mode, verdict, or sponsorship. Search by title or company.
+**Jobs** — filter by score, **country**, **role**, working mode, verdict, or sponsorship. Search by title or company.
+
+The country and role dropdowns are built from what the database actually holds, with counts: `Germany (395)`, `Database / DBA (115)`. A global feed makes a hardcoded list of 200 countries useless, and the options should never offer a filter that returns nothing.
 
 **Job detail** — the full score breakdown with the reasons behind each component, strong / transferable / missing skills, blockers, and buttons to:
 
@@ -160,15 +195,17 @@ Each button states its cost before you press it.
 
 **Applications** — the pipeline. Every stage change is recorded with a timestamp, so "when did this reach interview" is always answerable.
 
-**My Profile** — every skill with the evidence behind it. This is the source of truth for everything generated.
+**My Profile** — every skill with the evidence behind it. This is the source of truth for everything generated. Upload a new version here; the old one is kept, and the feed is re-scored against the new one for free.
 
-**Settings** — spend against the cap, models per stage, source health.
+**Settings** — your spend against your cap, your target countries, models per stage, source health.
 
 ---
 
 ## Editing your profile
 
-`data/profile.v3.json`. To change it, copy to `profile.v4.json`, edit, and re-run `npm run db:migrate`.
+In the app: **My Profile → upload**. It is validated, saved as the next version, and the feed is re-scored against it.
+
+Locally you can also keep using files: `data/profile.v3.json`, copied to `profile.v4.json`, edited, then `npm run db:migrate`.
 
 Versioning is the point: every match records which profile version scored it, so an old result stays explainable against the facts that were true at the time.
 
@@ -189,7 +226,11 @@ Levels are `expert`, `strong`, `working`, `familiar` — the matcher weights dep
 
 ## Changing what is searched
 
-`src/lib/search-config.ts` — countries, job titles, keywords.
+`src/lib/search-config.ts` — job titles and keywords.
+
+**Collection is not restricted by country.** `DEFAULT_SEARCH.countries` is empty, which means "everywhere the sources reach"; deciding for you that nothing outside Europe was worth seeing belonged to you, not to the collector. Filter by country on the Jobs page instead.
+
+Scoring is a different question: the location component rewards jobs in **your target countries**, which is a per-user setting on the Settings page (defaulting to `DEFAULT_TARGET_COUNTRIES`). Scoring against "everywhere" would make that component a constant.
 
 Titles are deliberately broad. Searching only your current title would miss most of the roles you actually fit, so an Oracle developer is also searched as Database Developer, Database Engineer, ERP Consultant, Backend Developer, and so on.
 
@@ -197,35 +238,38 @@ Titles are deliberately broad. Searching only your current title would miss most
 
 Implement `JobSource` in `src/lib/jobs/sources/`, add one line to `src/lib/jobs/registry.ts`. Nothing downstream knows how many sources there are.
 
-**Current sources:** Arbeitnow (no key, good German and EU coverage) and Adzuna (free key, DE/NL/AT/CH/FR/IT/ES/PL/GB/BE).
+**Current sources:**
 
-**Known gap:** Adzuna does not cover **Ireland, Sweden, Denmark, Norway or Luxembourg**. Ireland matters — English-speaking with a Critical Skills permit route.
+| Source | Key | Coverage | Descriptions |
+|---|---|---|---|
+| Arbeitnow | none | strong German and EU | full |
+| Adzuna | free | 21 countries: GB DE NL FR PL AT BE CH IT ES US CA AU NZ ZA SG IN BR MX RU AR | first 500 characters only |
+| The Muse | none (optional) | **Ireland** — Dublin, Cork, Galway — plus the Nordics and global hubs | full |
+
+**The Muse exists to close the Ireland gap.** Adzuna operates no Irish endpoint, and Ireland is the most valuable market for a non-EU English-speaking candidate: the Critical Skills Employment Permit is a real sponsorship route. A search that silently omitted it was omitting the best odds in the feed.
 
 **Rules for any new source:** public APIs and feeds only. No CAPTCHA solving, no login bypass, no paywall circumvention, no scraping a site whose terms forbid it. Adzuna truncates descriptions to 500 characters and this app does *not* follow through to the employer page to get the rest, on purpose.
 
 ---
 
-## Deploying it publicly
+## Deploying it
 
-It works on your machine as-is. Before putting it on the internet, **read this**:
+Full steps in **[DEPLOY.md](DEPLOY.md)** — Neon for the database, Vercel for the app, and the copy script that moves your local data across without deleting anything.
 
-> **There is no authentication.** `APP_USER_EMAIL` in `.env` decides who you are. That is a deliberate choice for a single-user tool bound to localhost — a password form protects nothing there. Exposed publicly, **anyone who finds the URL gets your resume, your job data, and a button that spends your API credit.**
+The blocker that used to be here is gone: **there is real authentication now.** Passwords are bcrypt, the session cookie is a signed `httpOnly` JWT backed by a `sessions` row that sign-out revokes, and every query that touches a score joins through the caller's own profile, so no query shape can return another user's data.
 
-To deploy safely you must add real authentication first. The `users` and `sessions` tables already exist, so no migration is needed. Then:
+What is still missing before you hand the URL to strangers, stated plainly:
 
-- Set every `.env` value as host environment variables. Never commit `.env`.
-- Use a managed PostgreSQL instance (Neon, Supabase, RDS).
-- Keep the spend caps — they are your protection against a runaway loop.
-- The app is a standard Next.js 15 build: `npm run build && npm start`. It runs anywhere Node runs — Vercel, Fly.io, Railway, a VPS, Docker.
+- **No email verification and no rate limiting on sign-in.** Anyone who can reach the URL can create an account, and each account can spend its own $2/day of *your* API credit.
+- **No password reset by email**, because nothing sends mail. `npm run user:password -- <email> "<password>"` on the server is the substitute.
+- **No admin interface.** Accounts are managed with SQL and the CLI.
 
-Honestly: for one person searching for a job, running it locally is better. Nothing here benefits from being on the internet.
-
----
+Other than that: set every secret as a host environment variable, never commit `.env`, use a managed PostgreSQL, and keep the spend caps.
 
 ## Testing
 
 ```bash
-npm test         # 35 tests: matching, parsing, verification
+npm test         # 59 tests: matching, parsing, verification, roles, uploads, locations
 npm run typecheck
 npm run build
 ```
@@ -235,32 +279,39 @@ Most of these tests exist because something was actually wrong. The regression t
 ## Layout
 
 ```
+src/lib/auth.ts               passwords, sessions, requireUser
+src/lib/auth-edge.ts          the cookie half that middleware can run
+src/middleware.ts             redirect anonymous visitors (a convenience, not the boundary)
 src/lib/resume/profile.ts     the profile schema; every skill needs evidence
+src/lib/resume/upload.ts      accepting a profile over HTTP, with the same rule
 src/lib/match/taxonomy.ts     skill vocabulary, aliases, transferability
 src/lib/match/relevance.ts    is this even a software role
+src/lib/match/roles.ts        what KIND of role it is, for the role filter
 src/lib/match/score.ts        the six-component scorer
-src/lib/jobs/types.ts         the JobSource interface
+src/lib/match/rescore.ts      score the shared feed against one user, in batches
+src/lib/jobs/types.ts         the JobSource interface, and the country names
 src/lib/jobs/parse.ts         location, visa, language, experience extraction
-src/lib/jobs/sources/         one file per job board
+src/lib/jobs/sources/         one file per job board (arbeitnow, adzuna, themuse)
 src/lib/ai/prompts.ts         prompts, with the truthfulness rule
 src/lib/ai/verify.ts          checks generated text against the profile
-src/lib/ai/budget.ts          spend caps
-src/lib/ai/cache.ts           on-disk cache
+src/lib/ai/budget.ts          spend caps, per user
+src/lib/ai/cache.ts           content-addressed cache, on disk or in the database
 src/lib/docs/render.ts        ATS-safe DOCX
-src/lib/db/repo.ts            all SQL
+src/lib/db/repo.ts            all SQL, and where per-user isolation is enforced
 src/app/                      the web UI
 db/001_schema.sql             the schema, with reasoning in comments
-scripts/                      migrate, sync, and CLI analysis
+db/002_multiuser_global.sql   auth, per-user spend, role categories
+scripts/                      migrate, sync, set-password, copy-to-remote
 ```
 
 ## What is not built
 
 Being explicit, because a tool that pretends to be finished is worse than one that says where it stops:
 
-- **No authentication.** See the deployment warning.
+- **No email verification, password reset, or sign-in rate limiting.** Authentication itself is real; these three are not built. See [DEPLOY.md](DEPLOY.md).
 - **No email or push notifications.** The threshold is stored; the sending is not built. The dashboard is the notification.
 - **No PDF export.** DOCX and plain text only. Word, Google Docs, and LibreOffice all export PDF in one click.
-- **No résumé upload parsing.** The profile is hand-maintained JSON, which is deliberate: automatic parsing of your own resume is the step most likely to introduce an error you would not notice.
+- **No résumé parsing.** You upload JSON, not a .docx. This is deliberate: automatic parsing of your own resume is the step most likely to introduce an error you would not notice, and everything generated downstream is only as truthful as this file.
 - **Salary data is thin.** Most European postings simply do not state it.
 - **The visa and relocation flags read what the posting says.** They are not immigration advice, and "not specified" genuinely means unknown.
 

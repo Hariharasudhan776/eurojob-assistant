@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { cacheGet, cacheSet } from '../db/repo.ts';
 import type { CacheStore, Usage } from './client.ts';
 
 /**
@@ -82,5 +83,52 @@ export class FileCache implements CacheStore {
       byKind[kind] = (byKind[kind] ?? 0) + 1;
     }
     return { entries: files.length, bytes, byKind };
+  }
+}
+
+/**
+ * The same cache, in PostgreSQL, for hosts with no writable disk.
+ *
+ * On a serverless platform the filesystem is read-only apart from a temporary
+ * directory that does not survive the invocation, so FileCache there is not a
+ * slower cache -- it is no cache, and every request pays full price. The
+ * `ai_cache` table has been in the schema from the start for exactly this.
+ *
+ * The key is unchanged: (kind, content hash, model). A hit can only ever be the
+ * answer to a byte-identical question, and the model is part of the key so a
+ * cheaper model's answer is never served when a better one was asked for.
+ */
+export class DbCache implements CacheStore {
+  private hits = 0;
+  private misses = 0;
+
+  async get(kind: string, key: string, model: string): Promise<unknown | null> {
+    try {
+      const value = await cacheGet(kind, key, model);
+      if (value === null || value === undefined) {
+        this.misses += 1;
+        return null;
+      }
+      this.hits += 1;
+      return value;
+    } catch {
+      // An unreachable cache must degrade to a miss, not fail the request. The
+      // spend cap is the protection against that costing too much.
+      this.misses += 1;
+      return null;
+    }
+  }
+
+  async set(kind: string, key: string, model: string, value: unknown, usage: Usage): Promise<void> {
+    try {
+      await cacheSet(kind, key, model, value, usage);
+    } catch {
+      // Failing to memoise is not worth losing an answer the user already paid
+      // for; the caller has the value in hand either way.
+    }
+  }
+
+  get stats() {
+    return { hits: this.hits, misses: this.misses };
   }
 }

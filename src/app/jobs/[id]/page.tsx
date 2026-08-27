@@ -1,8 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJob } from '@/lib/db/repo';
+import { getJob, latestProfile } from '@/lib/db/repo';
 import { currentUserId } from '@/lib/session';
+import { countryName } from '@/lib/jobs/types';
+import { roleLabel } from '@/lib/match/roles';
+import { atsReport } from '@/lib/match/ats';
 import { Bar, Card, Pill, RecommendationPill, ScoreBadge, SponsorshipPill } from '@/components/ui';
+import { AtsCard } from '@/components/AtsCard';
 import { JobActions } from '@/components/JobActions';
 
 export const dynamic = 'force-dynamic';
@@ -45,11 +49,18 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
   if (!Number.isInteger(jobId)) notFound();
 
   const userId = await currentUserId();
-  const job = await getJob(userId, jobId);
+  const [job, profile] = await Promise.all([getJob(userId, jobId), latestProfile(userId)]);
   if (!job) notFound();
 
-  const breakdown = (job.breakdown ?? {}) as Breakdown;
-  const ai = (job.ai_summary ?? null) as AiSummary | null;
+  // `breakdown` is a jsonb column (already an object); `ai_summary` is a text
+  // column holding JSON, so it arrives as a string and must be parsed. Handling
+  // both shapes keeps this robust whichever way a column is typed.
+  const breakdown = (parseMaybe(job.breakdown) ?? {}) as Breakdown;
+  const ai = (parseMaybe(job.ai_summary) ?? null) as AiSummary | null;
+  // Free, deterministic ATS pre-flight from the match that already exists.
+  const ats = profile
+    ? atsReport(breakdown.requirements?.required ?? [], profile.data, job.description_complete)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -60,11 +71,12 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
             <p className="mt-1 text-sm text-[var(--color-muted)]">
               {job.company}
               {job.city ? ` — ${job.city}` : ''}
-              {job.country ? `, ${job.country}` : ''} · {job.remote}
+              {job.country ? `, ${countryName(job.country)}` : ''} · {job.remote}
               {job.employment_type ? ` · ${job.employment_type}` : ''}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <RecommendationPill value={job.recommendation} />
+              {job.role_category && <Pill tone="accent">{roleLabel(job.role_category)}</Pill>}
               <SponsorshipPill value={job.visa_sponsorship} />
               {job.relocation_support === 'yes' && <Pill tone="good">relocation support</Pill>}
               {job.languages?.length ? <Pill>needs {job.languages.join(', ')}</Pill> : <Pill>no language stated</Pill>}
@@ -196,6 +208,8 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
         </Card>
       )}
 
+      {ats && <AtsCard report={ats} />}
+
       <JobActions jobId={job.id} currentStage={job.stage} notes={job.notes} />
 
       <Card title="Original description">
@@ -212,6 +226,16 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
       <Link href="/jobs" className="inline-block text-sm text-[var(--color-accent)]">← back to jobs</Link>
     </div>
   );
+}
+
+/** A jsonb column returns an object; a text column returns a JSON string. Accept both. */
+function parseMaybe(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 function SkillList({ label, tone, items, empty = 'None.' }: { label: string; tone: 'good' | 'warn' | 'bad'; items: string[]; empty?: string }) {

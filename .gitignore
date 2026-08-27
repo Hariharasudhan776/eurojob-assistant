@@ -10,3 +10,6 @@ data/ai-cache/
 data/ai-spend.json
 tsconfig.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*

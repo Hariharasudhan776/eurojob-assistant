@@ -95,7 +95,12 @@ export interface JobSource {
   fetch(query: JobQuery): Promise<FetchResult>;
 }
 
-/** Countries supported out of the box (spec §4). Configurable at runtime. */
+/**
+ * The European countries the app was originally built around. Kept as its own
+ * export because it is still the default *target* list for scoring -- the
+ * countries a location score treats as "where I want to work" until the user
+ * says otherwise -- even though collection is no longer restricted to them.
+ */
 export const EUROPEAN_COUNTRIES: Record<string, string> = {
   DE: 'Germany',
   NL: 'Netherlands',
@@ -117,3 +122,33 @@ export const EUROPEAN_COUNTRIES: Record<string, string> = {
   EE: 'Estonia',
   GB: 'United Kingdom',
 };
+
+/**
+ * Every country a collected posting can be attributed to.
+ *
+ * This exists because the feed is global now: a job in Toronto or Bengaluru has
+ * to be storable and filterable, and a code with no name here would show up in
+ * the UI as a bare two-letter string. The Jobs page builds its country filter
+ * from the countries actually present in the database and looks their names up
+ * here, so an unrecognised code degrades to the code rather than disappearing.
+ */
+export const COUNTRY_NAMES: Record<string, string> = {
+  ...EUROPEAN_COUNTRIES,
+  // rest of Europe that sources reach without a dedicated endpoint
+  BG: 'Bulgaria', HR: 'Croatia', CY: 'Cyprus', GR: 'Greece', HU: 'Hungary',
+  IS: 'Iceland', LT: 'Lithuania', LV: 'Latvia', MT: 'Malta', RO: 'Romania',
+  RS: 'Serbia', SI: 'Slovenia', SK: 'Slovakia', UA: 'Ukraine', TR: 'Türkiye',
+  // Americas
+  US: 'United States', CA: 'Canada', MX: 'Mexico', BR: 'Brazil', AR: 'Argentina',
+  CL: 'Chile', CO: 'Colombia',
+  // Asia-Pacific, Middle East, Africa
+  AU: 'Australia', NZ: 'New Zealand', SG: 'Singapore', IN: 'India', JP: 'Japan',
+  CN: 'China', HK: 'Hong Kong', KR: 'South Korea', MY: 'Malaysia', PH: 'Philippines',
+  ID: 'Indonesia', VN: 'Vietnam', IL: 'Israel', AE: 'United Arab Emirates',
+  SA: 'Saudi Arabia', QA: 'Qatar', OM: 'Oman', KW: 'Kuwait', BH: 'Bahrain',
+  ZA: 'South Africa', EG: 'Egypt', KE: 'Kenya', NG: 'Nigeria', MA: 'Morocco',
+  RU: 'Russia',
+};
+
+export const countryName = (code: string | null | undefined): string =>
+  code ? (COUNTRY_NAMES[code] ?? code) : 'location not stated';

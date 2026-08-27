@@ -16,9 +16,11 @@ import { collect } from '../src/lib/jobs/registry.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import { scoreJob } from '../src/lib/match/score.ts';
 import { AiClient, STAGE_MODELS } from '../src/lib/ai/client.ts';
-import { AiServices, shouldAnalyse } from '../src/lib/ai/services.ts';
-import { FileCache } from '../src/lib/ai/cache.ts';
-import { BudgetGuard, BudgetExceededError, SpendLedger, defaultLedgerPath, DEFAULT_LIMITS } from '../src/lib/ai/budget.ts';
+import { shouldAnalyse } from '../src/lib/ai/services.ts';
+import { aiRuntime } from '../src/lib/ai/runtime.ts';
+import { BudgetExceededError, DEFAULT_LIMITS } from '../src/lib/ai/budget.ts';
+import { ensureUser } from '../src/lib/db/repo.ts';
+import { getPool } from '../src/lib/db/pool.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const TARGET_COUNTRIES = ['DE', 'NL', 'SE', 'FI', 'DK', 'NO', 'IE', 'BE', 'AT', 'FR', 'CH', 'LU', 'PL'];
@@ -74,16 +76,15 @@ async function main() {
   console.log(`${eligible.length} of ${scored.length} jobs are above the AI threshold (AI_MIN_SCORE=${process.env.AI_MIN_SCORE ?? 70})`);
   console.log(`analysing the top ${Math.min(wanted, eligible.length)}\n`);
 
-  const root = join(here, '..');
-  const cache = new FileCache(join(root, 'data', 'ai-cache'));
-  const ledger = new SpendLedger(defaultLedgerPath(root));
-  const guard = new BudgetGuard(ledger);
+  // Spend goes through the same per-user ledger the web app uses, charged to
+  // APP_USER_EMAIL. A second, separate accounting path for the CLI would be a
+  // way to spend past the cap without noticing.
+  const userId = await ensureUser(process.env.APP_USER_EMAIL || 'local@eurojob');
+  const { client: ai, services, guard, cache } = await aiRuntime(userId, profile);
 
-  const cached = cache.summary();
-  console.log(`cache: ${cached.entries} entries on disk (${(cached.bytes / 1024).toFixed(0)} kB)`);
   console.log(
     `limits: $${DEFAULT_LIMITS.perRunUsd.toFixed(2)}/run, $${DEFAULT_LIMITS.dailyUsd.toFixed(2)}/day ` +
-      `(spent in last 24h: $${ledger.spentLast24h().toFixed(4)})`
+      `(this user has spent $${guard.spentLast24h().toFixed(4)} in the last 24h)`
   );
   console.log(`models: summary=${STAGE_MODELS['match-summary']} letter=${STAGE_MODELS['cover-letter']} resume=${STAGE_MODELS['resume-tailor']}`);
   console.log(
@@ -92,8 +93,6 @@ async function main() {
       : 'mode: triage only (explanations, about $0.009 per job). Pass --full for documents.\n'
   );
 
-  const ai = new AiClient(cache, { budget: guard });
-  const services = new AiServices(ai, profile);
   const results: unknown[] = [];
 
   for (const { job, match } of eligible.slice(0, wanted)) {
@@ -160,12 +159,14 @@ STOPPED: ${err.message}`);
   console.log(`  prompt cache: ${usage.cacheReadTokens} read, ${usage.cacheCreationTokens} written`);
   console.log(`  estimated cost this run: $${estimatedCostUsd.toFixed(4)}`);
   console.log(`  cache: ${cache.stats.hits} hits, ${cache.stats.misses} misses`);
+  // Written durably before the process can exit.
+  await guard.flush();
   console.log(`
-spend in the last 24h, by stage:`);
-  for (const row of ledger.breakdown()) {
+spend this run, by stage:`);
+  for (const row of guard.breakdown()) {
     console.log(`  ${row.kind.padEnd(16)} ${String(row.calls).padStart(3)} calls  $${row.usd.toFixed(4)}`);
   }
-  console.log(`  ${'TOTAL'.padEnd(16)}     $${ledger.spentLast24h().toFixed(4)} of $${DEFAULT_LIMITS.dailyUsd.toFixed(2)} daily cap`);
+  console.log(`  ${'TOTAL'.padEnd(16)}     $${guard.spentLast24h().toFixed(4)} of $${DEFAULT_LIMITS.dailyUsd.toFixed(2)} daily cap for this user`);
 
   mkdirSync(join(here, '..', 'data', 'generated'), { recursive: true });
   const out = join(here, '..', 'data', 'generated', 'analysis.json');

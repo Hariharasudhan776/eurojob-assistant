@@ -1,50 +1,45 @@
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { getPool } from '@/lib/db/pool';
+import { getTargetCountries, spendBreakdown, spentLast24h } from '@/lib/db/repo';
+import { currentUserId } from '@/lib/session';
 import { Card, Pill } from '@/components/ui';
+import { TargetCountries } from '@/components/TargetCountries';
 import { DEFAULT_LIMITS } from '@/lib/ai/budget';
 import { STAGE_MODELS } from '@/lib/ai/client';
-import { DEFAULT_SEARCH } from '@/lib/search-config';
+import { DEFAULT_SEARCH, DEFAULT_TARGET_COUNTRIES } from '@/lib/search-config';
+import { COUNTRY_NAMES } from '@/lib/jobs/types';
+import { SOURCES } from '@/lib/jobs/registry';
 
 export const dynamic = 'force-dynamic';
 
-interface LedgerEntry {
-  at: string;
-  usd: number;
-  kind: string;
-  model: string;
-}
-
 export default async function SettingsPage() {
-  const { rows: sources } = await getPool().query(
-    'SELECT slug, display_name, requires_key, last_run_at, last_status, last_error FROM job_sources ORDER BY slug'
-  );
+  const userId = await currentUserId();
 
-  const ledgerPath = join(process.cwd(), 'data', 'ai-spend.json');
-  let spend: LedgerEntry[] = [];
-  if (existsSync(ledgerPath)) {
-    try {
-      spend = JSON.parse(readFileSync(ledgerPath, 'utf8')) as LedgerEntry[];
-    } catch {
-      spend = [];
-    }
-  }
-
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const recent = spend.filter((e) => Date.parse(e.at) >= cutoff);
-  const total = recent.reduce((sum, e) => sum + e.usd, 0);
-
-  const byKind = new Map<string, { calls: number; usd: number }>();
-  for (const entry of recent) {
-    const current = byKind.get(entry.kind) ?? { calls: 0, usd: 0 };
-    byKind.set(entry.kind, { calls: current.calls + 1, usd: current.usd + entry.usd });
-  }
+  const [{ rows: sources }, total, byKind, chosenCountries] = await Promise.all([
+    getPool().query(
+      'SELECT slug, display_name, requires_key, last_run_at, last_status, last_error FROM job_sources ORDER BY slug'
+    ),
+    // Spend comes from the ai_spend table, per user. It used to be read from
+    // data/ai-spend.json, which cannot be right once there is more than one
+    // account (one shared allowance) or once the host has no writable disk
+    // (every request would start from zero and the cap would not exist).
+    spentLast24h(userId),
+    spendBreakdown(userId),
+    getTargetCountries(userId),
+  ]);
 
   const usedFraction = DEFAULT_LIMITS.dailyUsd > 0 ? total / DEFAULT_LIMITS.dailyUsd : 0;
+  const usingDefaultCountries = chosenCountries.length === 0;
+  const selected = usingDefaultCountries ? DEFAULT_TARGET_COUNTRIES : chosenCountries;
+
+  // Offer the default targets plus anywhere a source can actually reach, so the
+  // list is useful without being a scroll through every country on earth.
+  const offered = [...new Set([...DEFAULT_TARGET_COUNTRIES, ...selected, ...SOURCES.flatMap((s) => (s.coverage === 'any' ? [] : s.coverage))])]
+    .map((code) => ({ code, name: COUNTRY_NAMES[code] ?? code }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="space-y-4">
-      <Card title="AI spend, last 24 hours">
+      <Card title="Your AI spend, last 24 hours">
         <p className="tnum text-2xl font-semibold">
           ${total.toFixed(4)}
           <span className="ml-2 text-sm font-normal text-[var(--color-muted)]">
@@ -60,25 +55,29 @@ export default async function SettingsPage() {
             }}
           />
         </div>
-        {byKind.size > 0 && (
+        {byKind.length > 0 && (
           <ul className="mt-3 space-y-1">
-            {[...byKind.entries()]
-              .sort((a, b) => b[1].usd - a[1].usd)
-              .map(([kind, v]) => (
-                <li key={kind} className="flex justify-between text-sm">
-                  <span className="text-[var(--color-muted)]">
-                    {kind} ({v.calls} calls)
-                  </span>
-                  <span className="tnum">${v.usd.toFixed(4)}</span>
-                </li>
-              ))}
+            {byKind.map((entry) => (
+              <li key={entry.kind} className="flex justify-between text-sm">
+                <span className="text-[var(--color-muted)]">
+                  {entry.kind} ({entry.calls} calls)
+                </span>
+                <span className="tnum">${entry.usd.toFixed(4)}</span>
+              </li>
+            ))}
           </ul>
         )}
         <p className="mt-3 text-xs text-[var(--color-muted)]">
-          Caps are enforced before a request is sent, not after. Exceeding one aborts the action and says why.
-          Change them in <code className="text-[var(--color-fg)]">.env</code> — AI_MAX_RUN_USD is currently $
-          {DEFAULT_LIMITS.perRunUsd.toFixed(2)}, AI_MAX_DAILY_USD ${DEFAULT_LIMITS.dailyUsd.toFixed(2)}.
+          This cap is <strong className="text-[var(--color-fg)]">yours alone</strong> — every account has its own
+          ${DEFAULT_LIMITS.dailyUsd.toFixed(2)} a day, so nobody else&rsquo;s generating can spend your allowance.
+          Caps are enforced before a request is sent, not after: exceeding one aborts the action and says which cap
+          stopped it. AI_MAX_RUN_USD is currently ${DEFAULT_LIMITS.perRunUsd.toFixed(2)}, AI_MAX_DAILY_USD $
+          {DEFAULT_LIMITS.dailyUsd.toFixed(2)}, AI_MAX_CALL_USD ${DEFAULT_LIMITS.perCallUsd.toFixed(2)}.
         </p>
+      </Card>
+
+      <Card title="Target countries — what the location score rewards">
+        <TargetCountries options={offered} selected={selected} isDefault={usingDefaultCountries} />
       </Card>
 
       <Card title="Models per stage">
@@ -93,7 +92,7 @@ export default async function SettingsPage() {
         <p className="mt-3 text-xs text-[var(--color-muted)]">
           Explanations run often and only summarise numbers already computed in code, so they use the cheapest
           capable model. Override with AI_MODEL_SUMMARY, AI_MODEL_LETTER, AI_MODEL_RESUME, or force one model for
-          everything with AI_MODEL.
+          everything with AI_MODEL. No model ever produces a score.
         </p>
       </Card>
 
@@ -123,15 +122,18 @@ export default async function SettingsPage() {
           ))}
         </ul>
         <p className="mt-3 text-xs text-[var(--color-muted)]">
-          Adzuna does not cover Ireland, Sweden, Denmark, Norway or Luxembourg. Adding a source means implementing
-          the JobSource interface in src/lib/jobs/sources and adding one line to registry.ts.
+          Adzuna covers 21 countries but not Ireland, which is why The Muse was added — it needs no key, returns full
+          descriptions, and covers Dublin, Cork, Galway and the Nordics. Adding another source means implementing the
+          JobSource interface in src/lib/jobs/sources and adding one line to registry.ts.
         </p>
       </Card>
 
       <Card title="What is searched">
         <p className="text-sm">
           <span className="text-[var(--color-muted)]">Countries: </span>
-          {DEFAULT_SEARCH.countries.join(', ')}
+          {DEFAULT_SEARCH.countries.length === 0
+            ? 'everywhere the sources reach — collection is not restricted by country. Filter on the Jobs page instead.'
+            : DEFAULT_SEARCH.countries.join(', ')}
         </p>
         <p className="mt-2 text-sm">
           <span className="text-[var(--color-muted)]">Titles: </span>

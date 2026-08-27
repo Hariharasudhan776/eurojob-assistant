@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { setStage, listApplications, STAGES, type Stage } from '@/lib/db/repo';
-import { currentUserId } from '@/lib/session';
+import { requireUserId, UnauthenticatedError } from '@/lib/auth';
+
+export const runtime = 'nodejs';
 
 export async function GET() {
-  const userId = await currentUserId();
-  return NextResponse.json({ applications: await listApplications(userId) });
+  try {
+    const userId = await requireUserId();
+    return NextResponse.json({ applications: await listApplications(userId) });
+  } catch (err) {
+    if (err instanceof UnauthenticatedError) return NextResponse.json({ error: err.message }, { status: 401 });
+    throw err;
+  }
 }
 
 export async function POST(request: Request) {
@@ -30,10 +37,11 @@ export async function POST(request: Request) {
   const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim().slice(0, 4000) : undefined;
 
   try {
-    const userId = await currentUserId();
+    const userId = await requireUserId();
     const applicationId = await setStage(userId, jobId, stage as Stage, note);
     return NextResponse.json({ ok: true, applicationId });
   } catch (err) {
+    if (err instanceof UnauthenticatedError) return NextResponse.json({ error: err.message }, { status: 401 });
     return NextResponse.json({ error: err instanceof Error ? err.message : 'failed' }, { status: 500 });
   }
 }

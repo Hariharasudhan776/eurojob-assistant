@@ -1,5 +1,5 @@
 import { getDocument, getJob, latestProfile } from '@/lib/db/repo';
-import { currentUserId } from '@/lib/session';
+import { requireUserId, UnauthenticatedError } from '@/lib/auth';
 import { renderCoverLetter, renderResume, renderResumeText } from '@/lib/docs/render';
 import type { CoverLetter, TailoredResume } from '@/lib/ai/schemas';
 
@@ -10,6 +10,8 @@ import type { CoverLetter, TailoredResume } from '@/lib/ai/schemas';
  * pressing download twice costs nothing and always produces the same file as
  * the version that was reviewed on screen.
  */
+export const runtime = 'nodejs';
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const jobId = Number(url.searchParams.get('jobId'));
@@ -23,7 +25,13 @@ export async function GET(request: Request) {
     return new Response('kind must be resume or cover_letter', { status: 400 });
   }
 
-  const userId = await currentUserId();
+  let userId: number;
+  try {
+    userId = await requireUserId();
+  } catch (err) {
+    if (err instanceof UnauthenticatedError) return new Response(err.message, { status: 401 });
+    throw err;
+  }
   const [job, profile, document] = await Promise.all([
     getJob(userId, jobId),
     latestProfile(userId),

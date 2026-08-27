@@ -1,13 +1,36 @@
 import { getPool, withTransaction } from './pool.ts';
 import type { NormalisedJob } from '../jobs/types.ts';
 import type { MatchResult } from '../match/score.ts';
+import { classifyRole } from '../match/roles.ts';
+import { extractSkills } from '../match/taxonomy.ts';
 import type { CandidateProfile } from '../resume/profile.ts';
 
 /**
  * Data access. Deliberately plain SQL rather than an ORM: the queries here are
  * few, the shapes are known, and an ORM would add a schema-definition language
  * on top of a schema that is already written and commented.
+ *
+ * ---------------------------------------------------------------------------
+ * Multi-user isolation, and where the line sits
+ * ---------------------------------------------------------------------------
+ * `jobs` is SHARED. A posting is public data, and collecting the same job board
+ * once per user would multiply the requests by the number of accounts for
+ * identical results.
+ *
+ * Everything derived from a person is PRIVATE: matches (via `profile_id`),
+ * applications, documents, notifications, and AI spend. Every query below that
+ * touches a match joins it through MY_PROFILE -- a subquery for the caller's own
+ * latest profile -- rather than on `job_id` alone. That is what makes isolation
+ * structural instead of a filter someone can forget: there is no query shape
+ * here that can return another user's score.
  */
+
+/**
+ * The caller's own latest profile. $1 is always the user id in the queries that
+ * use this. Written as a subquery rather than a parameter so a caller cannot
+ * pass someone else's profile id, by accident or otherwise.
+ */
+const MY_PROFILE = '(SELECT id FROM profiles WHERE user_id = $1 ORDER BY version DESC LIMIT 1)';
 
 export interface JobRow {
   id: number;
@@ -24,6 +47,8 @@ export interface JobRow {
   salary_currency: string | null;
   description: string;
   description_complete: boolean;
+  /** From src/lib/match/roles.ts. NULL means never classified, not 'other'. */
+  role_category: string | null;
   languages: string[] | null;
   visa_sponsorship: string;
   relocation_support: string;
@@ -51,7 +76,13 @@ export interface MatchRow {
 
 export type JobWithMatch = JobRow & Partial<MatchRow> & { stage: string | null; notes: string | null };
 
-/** The single user this personal tool serves. Created on first run. */
+/**
+ * The CLI's user. `npm run sync` and `npm run db:migrate` have no session, so
+ * they identify themselves with APP_USER_EMAIL and this creates the row if it is
+ * missing. The hash is the literal 'local-only', which bcrypt can never verify,
+ * so this route cannot be used to log in -- give the row a real password with
+ * `npm run user:password` to adopt it as an account.
+ */
 export async function ensureUser(email: string): Promise<number> {
   const { rows } = await getPool().query(
     `INSERT INTO users (email, password_hash) VALUES ($1, 'local-only')
@@ -60,6 +91,176 @@ export async function ensureUser(email: string): Promise<number> {
     [email]
   );
   return rows[0].id as number;
+}
+
+// --- accounts and sessions -------------------------------------------------
+
+export interface UserRow {
+  id: number;
+  email: string;
+  password_hash: string;
+  display_name: string | null;
+  status: string;
+  is_admin: boolean;
+  ai_provider: string;
+}
+
+export async function findUserByEmail(email: string): Promise<UserRow | null> {
+  const { rows } = await getPool().query(
+    `SELECT id, email, password_hash, display_name, status, is_admin, ai_provider
+       FROM users WHERE lower(email) = lower($1)`,
+    [email]
+  );
+  return (rows[0] as UserRow) ?? null;
+}
+
+/** The AI provider this user's generations should use ('claude' | 'gemini'). */
+export async function getAiProvider(userId: number): Promise<string> {
+  const { rows } = await getPool().query('SELECT ai_provider FROM users WHERE id = $1', [userId]);
+  return (rows[0]?.ai_provider as string) ?? 'claude';
+}
+
+export async function setAiProvider(userId: number, provider: 'claude' | 'gemini'): Promise<void> {
+  await getPool().query('UPDATE users SET ai_provider = $2 WHERE id = $1', [userId, provider]);
+}
+
+export interface AdminUserRow {
+  id: number;
+  email: string;
+  display_name: string | null;
+  status: string;
+  is_admin: boolean;
+  ai_provider: string;
+  created_at: string;
+  last_login_at: string | null;
+  has_password: boolean;
+}
+
+/** Every account, newest first — for the admin panel. */
+export async function listAllUsers(): Promise<AdminUserRow[]> {
+  const { rows } = await getPool().query(
+    `SELECT id, email, display_name, status, is_admin, ai_provider, created_at, last_login_at,
+            (password_hash IS NOT NULL AND password_hash <> 'local-only') AS has_password
+       FROM users ORDER BY created_at DESC, id DESC`
+  );
+  return rows as AdminUserRow[];
+}
+
+export async function setUserStatus(userId: number, status: 'active' | 'pending' | 'rejected'): Promise<void> {
+  await getPool().query('UPDATE users SET status = $2 WHERE id = $1', [userId, status]);
+}
+
+export async function setUserPasswordById(userId: number, passwordHash: string): Promise<void> {
+  await getPool().query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, passwordHash]);
+}
+
+/** How many accounts are waiting for review — drives the admin nav badge. */
+export async function pendingUserCount(): Promise<number> {
+  const { rows } = await getPool().query(`SELECT count(*)::int AS n FROM users WHERE status = 'pending'`);
+  return rows[0].n as number;
+}
+
+/** Make the named account an admin and mark it active. Used by the migration. */
+export async function promoteToAdmin(email: string): Promise<void> {
+  await getPool().query(
+    `UPDATE users SET is_admin = true, status = 'active' WHERE lower(email) = lower($1)`,
+    [email]
+  );
+}
+
+/**
+ * Create an account.
+ *
+ * Returns null when the email is taken. The pre-auth 'local-only' row is
+ * adopted rather than rejected: the same email signing up gets its password set,
+ * which keeps whatever profile and applications that row already owns instead of
+ * orphaning them behind an account nobody can reach.
+ */
+export async function createUser(email: string, passwordHash: string, displayName: string | null): Promise<number | null> {
+  return withTransaction(async (client) => {
+    // Locked while we decide, so two simultaneous signups for one address cannot
+    // both conclude the row is free.
+    const { rows: existing } = await client.query(
+      'SELECT id, password_hash FROM users WHERE lower(email) = lower($1) FOR UPDATE',
+      [email]
+    );
+
+    if (existing[0]) {
+      // A real account already owns this address.
+      if (existing[0].password_hash !== 'local-only') return null;
+      await client.query(
+        'UPDATE users SET password_hash = $2, display_name = COALESCE(display_name, $3) WHERE id = $1',
+        [existing[0].id, passwordHash, displayName]
+      );
+      return existing[0].id as number;
+    }
+
+    try {
+      // New accounts are created 'pending': they cannot sign in until an admin
+      // approves them from the admin panel. (Existing rows kept their default
+      // 'active' via the migration, so nobody already using the app is affected.)
+      const { rows } = await client.query(
+        `INSERT INTO users (email, password_hash, display_name, status)
+         VALUES ($1, $2, $3, 'pending') RETURNING id`,
+        [email.toLowerCase(), passwordHash, displayName]
+      );
+      return rows[0].id as number;
+    } catch (err) {
+      // 23505: the unique index caught a race the SELECT could not see.
+      if ((err as { code?: string }).code === '23505') return null;
+      throw err;
+    }
+  });
+}
+
+export async function setUserPassword(email: string, passwordHash: string): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    'UPDATE users SET password_hash = $2 WHERE lower(email) = lower($1)',
+    [email, passwordHash]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export async function touchLogin(userId: number): Promise<void> {
+  await getPool().query('UPDATE users SET last_login_at = now() WHERE id = $1', [userId]);
+}
+
+export async function createSessionRow(userId: number, expiresAt: Date, userAgent: string | null): Promise<string> {
+  const { rows } = await getPool().query(
+    'INSERT INTO sessions (user_id, expires_at, user_agent) VALUES ($1, $2, $3) RETURNING id',
+    [userId, expiresAt, userAgent?.slice(0, 300) ?? null]
+  );
+  return rows[0].id as string;
+}
+
+/** A session is live only if it exists, has not expired, and was not revoked. */
+export async function liveSession(sessionId: string): Promise<{ user_id: number; email: string; display_name: string | null; is_admin: boolean } | null> {
+  const { rows } = await getPool().query(
+    `SELECT s.user_id, u.email, u.display_name, u.is_admin
+       FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > now()`,
+    [sessionId]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Sign out. The row is marked revoked, never deleted -- "when did this session
+ * end" stays answerable, and a deleted row cannot be distinguished from one that
+ * never existed.
+ */
+export async function revokeSessionRow(sessionId: string): Promise<void> {
+  await getPool().query('UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [sessionId]);
+}
+
+/** Everyone the scorer should score for: one row per user that has a profile. */
+export async function usersWithProfiles(): Promise<{ user_id: number; email: string; profile_id: number }[]> {
+  const { rows } = await getPool().query(
+    `SELECT DISTINCT ON (u.id) u.id AS user_id, u.email, p.id AS profile_id
+       FROM users u JOIN profiles p ON p.user_id = u.id
+      ORDER BY u.id, p.version DESC`
+  );
+  return rows as { user_id: number; email: string; profile_id: number }[];
 }
 
 export async function saveProfile(userId: number, profile: CandidateProfile): Promise<number> {
@@ -114,16 +315,21 @@ export async function recordSourceRun(slug: string, status: string, error: strin
  * Arbeitnow posting on a later run.
  */
 export async function upsertJob(job: NormalisedJob, contentHash: string): Promise<number> {
+  // Classified here rather than in the collector so every write path -- sync,
+  // backfill, a future source -- lands the same category for the same title.
+  const roleCategory = classifyRole(job.title, extractSkills(job.description));
+
   const { rows } = await getPool().query(
     `INSERT INTO jobs (
         source_slug, source_job_id, url, title, company, country, city, remote,
         employment_type, salary_min, salary_max, salary_currency, description,
         description_complete, languages, visa_sponsorship, relocation_support,
-        content_hash, raw, posted_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        content_hash, raw, posted_at, role_category
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      ON CONFLICT (source_slug, source_job_id) DO UPDATE SET
         title = EXCLUDED.title,
         url = EXCLUDED.url,
+        role_category = EXCLUDED.role_category,
         description = CASE
           WHEN EXCLUDED.description_complete OR NOT jobs.description_complete
           THEN EXCLUDED.description ELSE jobs.description END,
@@ -137,10 +343,55 @@ export async function upsertJob(job: NormalisedJob, contentHash: string): Promis
       job.sourceSlug, job.sourceJobId, job.url, job.title, job.company, job.country, job.city, job.remote,
       job.employmentType, job.salaryMin, job.salaryMax, job.salaryCurrency, job.description,
       job.descriptionComplete, job.languages, job.visaSponsorship, job.relocationSupport,
-      contentHash, JSON.stringify(job.raw ?? {}), job.postedAt,
+      contentHash, JSON.stringify(job.raw ?? {}), job.postedAt, roleCategory,
     ]
   );
   return rows[0].id as number;
+}
+
+/**
+ * Fill in `role_category` for jobs collected before the column existed, and for
+ * anything a classifier change would now label differently.
+ *
+ * Reads and updates only -- no row is removed. Returns how many changed.
+ */
+export async function backfillRoleCategories(): Promise<{ scanned: number; updated: number }> {
+  const { rows } = await getPool().query('SELECT id, title, description, role_category FROM jobs');
+  let updated = 0;
+  for (const row of rows as { id: number; title: string; description: string; role_category: string | null }[]) {
+    const category = classifyRole(row.title, extractSkills(row.description));
+    if (category === row.role_category) continue;
+    await getPool().query('UPDATE jobs SET role_category = $2 WHERE id = $1', [row.id, category]);
+    updated += 1;
+  }
+  return { scanned: rows.length, updated };
+}
+
+/**
+ * The role categories and countries actually present in the feed, for the Jobs
+ * page filters. Built from the data rather than from a constant, so a filter can
+ * never offer a value that returns nothing, or omit one that would.
+ */
+export async function facetCounts(): Promise<{
+  roles: { value: string | null; count: number }[];
+  countries: { value: string | null; count: number }[];
+}> {
+  const [roles, countries] = await Promise.all([
+    getPool().query(
+      `SELECT role_category AS value, count(*)::int AS count
+         FROM jobs WHERE duplicate_of IS NULL
+        GROUP BY role_category ORDER BY count DESC`
+    ),
+    getPool().query(
+      `SELECT country AS value, count(*)::int AS count
+         FROM jobs WHERE duplicate_of IS NULL
+        GROUP BY country ORDER BY count DESC`
+    ),
+  ]);
+  return {
+    roles: roles.rows as { value: string | null; count: number }[],
+    countries: countries.rows as { value: string | null; count: number }[],
+  };
 }
 
 /** Mark later copies of the same posting as duplicates of the earliest one. */
@@ -189,6 +440,120 @@ export async function saveMatch(jobId: number, profileId: number, match: MatchRe
   );
 }
 
+/**
+ * Save many matches in one statement.
+ *
+ * Scoring is free, so a new user's profile has to be scored against everything
+ * already collected -- several hundred rows. One INSERT per row is several
+ * hundred round trips, which is tolerable against loopback and far too slow
+ * against a managed database in another data centre.
+ */
+export async function saveMatches(profileId: number, entries: { jobId: number; match: MatchResult }[]): Promise<number> {
+  if (entries.length === 0) return 0;
+
+  const COLUMNS = 14;
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+
+  for (const [index, entry] of entries.entries()) {
+    const base = index * COLUMNS;
+    tuples.push(`(${Array.from({ length: COLUMNS }, (_, i) => `$${base + i + 1}`).join(',')})`);
+    const m = entry.match;
+    values.push(
+      entry.jobId, profileId, m.overall, m.components.technical.score,
+      m.components.experience.score, m.components.education.score,
+      m.components.location.score, m.components.language.score,
+      m.components.aiTools.score, m.recommendation,
+      JSON.stringify({
+        components: m.components,
+        requirements: m.requirements,
+        relevance: m.relevance,
+        confidence: m.confidence,
+        blockers: m.blockers,
+      }),
+      m.strongMatches, m.partialMatches, m.missingSkills
+    );
+  }
+
+  const { rowCount } = await getPool().query(
+    `INSERT INTO matches (
+        job_id, profile_id, overall, technical, experience, education, location,
+        language, ai_tools, recommendation, breakdown, strong_matches,
+        partial_matches, missing_skills
+     ) VALUES ${tuples.join(',')}
+     ON CONFLICT (job_id, profile_id) DO UPDATE SET
+        overall = EXCLUDED.overall, technical = EXCLUDED.technical,
+        experience = EXCLUDED.experience, education = EXCLUDED.education,
+        location = EXCLUDED.location, language = EXCLUDED.language,
+        ai_tools = EXCLUDED.ai_tools, recommendation = EXCLUDED.recommendation,
+        breakdown = EXCLUDED.breakdown, strong_matches = EXCLUDED.strong_matches,
+        partial_matches = EXCLUDED.partial_matches, missing_skills = EXCLUDED.missing_skills,
+        scored_at = now()`,
+    values
+  );
+  return rowCount ?? 0;
+}
+
+/**
+ * Jobs this profile has never been scored against, newest first, plus how many
+ * are left. Used to catch a new account up with the feed a batch at a time --
+ * a request that has to finish inside a serverless timeout cannot score 5,000
+ * postings in one go, and pretending otherwise would fail silently.
+ */
+export async function unscoredJobs(profileId: number, limit: number): Promise<{ rows: JobRow[]; remaining: number }> {
+  const [batch, count] = await Promise.all([
+    getPool().query(
+      `SELECT j.* FROM jobs j
+        WHERE j.duplicate_of IS NULL
+          AND NOT EXISTS (SELECT 1 FROM matches m WHERE m.job_id = j.id AND m.profile_id = $1)
+        ORDER BY j.posted_at DESC NULLS LAST, j.id DESC
+        LIMIT $2`,
+      [profileId, Math.max(1, Math.min(limit, 2000))]
+    ),
+    getPool().query(
+      `SELECT count(*)::int AS remaining FROM jobs j
+        WHERE j.duplicate_of IS NULL
+          AND NOT EXISTS (SELECT 1 FROM matches m WHERE m.job_id = j.id AND m.profile_id = $1)`,
+      [profileId]
+    ),
+  ]);
+  return { rows: batch.rows as JobRow[], remaining: count.rows[0].remaining as number };
+}
+
+/** Every canonical job, in pages, for a full re-score after a profile change. */
+export async function allJobs(limit: number, afterId = 0): Promise<JobRow[]> {
+  const { rows } = await getPool().query(
+    `SELECT * FROM jobs WHERE duplicate_of IS NULL AND id > $2 ORDER BY id LIMIT $1`,
+    [Math.max(1, Math.min(limit, 2000)), afterId]
+  );
+  return rows as JobRow[];
+}
+
+// --- per-user search preferences -------------------------------------------
+
+/**
+ * Which countries this person is actually targeting.
+ *
+ * Collection is global now, but the location component of the score is not:
+ * "in one of your target countries" only means something if the target list is
+ * that user's, not a global list of everywhere the collector reaches. Stored in
+ * the `search_preferences` table, which has been in the schema since the start.
+ */
+export async function getTargetCountries(userId: number): Promise<string[]> {
+  const { rows } = await getPool().query('SELECT countries FROM search_preferences WHERE user_id = $1', [userId]);
+  const countries = (rows[0]?.countries as string[] | undefined) ?? [];
+  return countries.filter((c) => typeof c === 'string' && c.length === 2);
+}
+
+export async function setTargetCountries(userId: number, countries: string[]): Promise<void> {
+  const clean = [...new Set(countries.map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c)))];
+  await getPool().query(
+    `INSERT INTO search_preferences (user_id, countries) VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE SET countries = EXCLUDED.countries, updated_at = now()`,
+    [userId, clean]
+  );
+}
+
 export async function saveAiSummary(jobId: number, profileId: number, summary: unknown, model: string) {
   await getPool().query(
     `UPDATE matches SET ai_summary = $3, ai_model = $4 WHERE job_id = $1 AND profile_id = $2`,
@@ -202,6 +567,8 @@ export interface JobFilters {
   remote?: string;
   recommendation?: string;
   sponsorshipOnly?: boolean;
+  /** A role_category value from src/lib/match/roles.ts. */
+  role?: string;
   search?: string;
   stage?: string;
   limit?: number;
@@ -213,6 +580,10 @@ export interface JobFilters {
  *
  * Duplicates are excluded, not merged in SQL: the canonical row already carries
  * the fullest description thanks to the upsert rule above.
+ *
+ * The match join is scoped to the caller's own profile (MY_PROFILE). Joining on
+ * `job_id` alone would show whoever's score happened to be written last, which
+ * with several users is both wrong and a leak.
  */
 export async function listJobs(userId: number, filters: JobFilters = {}): Promise<{ rows: JobWithMatch[]; total: number }> {
   const where: string[] = ['j.duplicate_of IS NULL'];
@@ -228,12 +599,16 @@ export async function listJobs(userId: number, filters: JobFilters = {}): Promis
   if (filters.remote) add('j.remote = $?', filters.remote);
   if (filters.recommendation) add('m.recommendation = $?', filters.recommendation);
   if (filters.sponsorshipOnly) where.push("j.visa_sponsorship = 'yes'");
+  if (filters.role) add('j.role_category = $?', filters.role);
   if (filters.stage) add('a.stage = $?', filters.stage);
   if (filters.search) add('(j.title ILIKE $? OR j.company ILIKE $?)'.replace('$?', `$${params.length + 1}`), `%${filters.search}%`);
 
   const clause = `WHERE ${where.join(' AND ')}`;
   const limit = Math.min(filters.limit ?? 50, 200);
   const offset = filters.offset ?? 0;
+  const joins = `
+      LEFT JOIN matches m ON m.job_id = j.id AND m.profile_id = ${MY_PROFILE}
+      LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = $1`;
 
   const sql = `
     SELECT j.*, m.overall, m.technical, m.experience, m.education, m.location,
@@ -241,8 +616,7 @@ export async function listJobs(userId: number, filters: JobFilters = {}): Promis
            m.strong_matches, m.partial_matches, m.missing_skills, m.ai_summary,
            a.stage, a.notes
       FROM jobs j
-      LEFT JOIN matches m ON m.job_id = j.id
-      LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = $1
+      ${joins}
       ${clause}
      ORDER BY m.overall DESC NULLS LAST, j.posted_at DESC NULLS LAST
      LIMIT ${limit} OFFSET ${offset}`;
@@ -250,8 +624,7 @@ export async function listJobs(userId: number, filters: JobFilters = {}): Promis
   const countSql = `
     SELECT count(*)::int AS total
       FROM jobs j
-      LEFT JOIN matches m ON m.job_id = j.id
-      LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = $1
+      ${joins}
       ${clause}`;
 
   const [list, count] = await Promise.all([
@@ -268,7 +641,7 @@ export async function getJob(userId: number, jobId: number): Promise<JobWithMatc
             m.strong_matches, m.partial_matches, m.missing_skills, m.ai_summary, m.ai_model,
             a.stage, a.notes
        FROM jobs j
-       LEFT JOIN matches m ON m.job_id = j.id
+       LEFT JOIN matches m ON m.job_id = j.id AND m.profile_id = ${MY_PROFILE}
        LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = $1
       WHERE j.id = $2`,
     [userId, jobId]
@@ -317,10 +690,10 @@ export async function listApplications(userId: number) {
   const { rows } = await getPool().query(
     `SELECT a.id, a.stage, a.notes, a.applied_at, a.updated_at,
             j.id AS job_id, j.title, j.company, j.country, j.city, j.url, j.remote,
-            m.overall, m.recommendation
+            j.role_category, m.overall, m.recommendation
        FROM applications a
        JOIN jobs j ON j.id = a.job_id
-       LEFT JOIN matches m ON m.job_id = j.id
+       LEFT JOIN matches m ON m.job_id = j.id AND m.profile_id = ${MY_PROFILE}
       WHERE a.user_id = $1
       ORDER BY a.updated_at DESC`,
     [userId]
@@ -342,13 +715,24 @@ export interface DashboardStats {
   rejected: number;
 }
 
+/**
+ * Dashboard counters.
+ *
+ * The job counts are of the shared feed -- postings are public and collected
+ * once. Everything derived from this person (their scores, their pipeline) is
+ * scoped to them: `matches` is filtered by their own profile, not counted across
+ * every user's matches, which is what made the pre-auth version's numbers
+ * meaningless as soon as a second account existed.
+ */
 export async function dashboardStats(userId: number): Promise<DashboardStats> {
   const { rows } = await getPool().query(
     `SELECT
         (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NULL) AS total_jobs,
         (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NULL AND collected_at > now() - interval '24 hours') AS new_jobs,
-        (SELECT count(*)::int FROM matches WHERE recommendation = 'highly_recommended') AS highly_matched,
-        (SELECT count(*)::int FROM matches) AS scored,
+        (SELECT count(*)::int FROM matches m JOIN jobs j ON j.id = m.job_id
+          WHERE j.duplicate_of IS NULL AND m.profile_id = ${MY_PROFILE}
+            AND m.recommendation = 'highly_recommended') AS highly_matched,
+        (SELECT count(*)::int FROM matches WHERE profile_id = ${MY_PROFILE}) AS scored,
         (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NOT NULL) AS duplicates,
         (SELECT count(*)::int FROM jobs WHERE visa_sponsorship = 'yes') AS sponsoring,
         (SELECT count(*)::int FROM applications WHERE user_id = $1 AND stage = 'shortlisted') AS shortlisted,
@@ -359,6 +743,33 @@ export async function dashboardStats(userId: number): Promise<DashboardStats> {
     [userId]
   );
   return rows[0] as DashboardStats;
+}
+
+/**
+ * Score distribution for the caller's own matches, bucketed for the dashboard
+ * histogram. Joins through MY_PROFILE like every other match query, so it can
+ * only ever see this user's scores.
+ */
+export async function scoreBuckets(userId: number): Promise<{ label: string; value: number }[]> {
+  const { rows } = await getPool().query(
+    `SELECT
+        count(*) FILTER (WHERE m.overall >= 80)::int AS b80,
+        count(*) FILTER (WHERE m.overall >= 70 AND m.overall < 80)::int AS b70,
+        count(*) FILTER (WHERE m.overall >= 60 AND m.overall < 70)::int AS b60,
+        count(*) FILTER (WHERE m.overall >= 50 AND m.overall < 60)::int AS b50,
+        count(*) FILTER (WHERE m.overall < 50)::int AS b0
+       FROM matches m JOIN jobs j ON j.id = m.job_id
+      WHERE j.duplicate_of IS NULL AND m.profile_id = ${MY_PROFILE}`,
+    [userId]
+  );
+  const r = rows[0];
+  return [
+    { label: '80+', value: r.b80 },
+    { label: '70–79', value: r.b70 },
+    { label: '60–69', value: r.b60 },
+    { label: '50–59', value: r.b50 },
+    { label: '<50', value: r.b0 },
+  ];
 }
 
 export async function latestProfile(userId: number): Promise<{ id: number; data: CandidateProfile } | null> {
@@ -398,4 +809,74 @@ export async function getDocument(userId: number, jobId: number, kind: 'resume' 
     [userId, jobId, kind]
   );
   return rows[0] ?? null;
+}
+
+// --- per-user AI spend ------------------------------------------------------
+
+/**
+ * Spend is recorded per user, because a shared allowance is not an allowance.
+ * With one JSON file for the whole instance, the first person to run a few
+ * resume generations would spend everyone else's day.
+ *
+ * The read is a single aggregate over a covering index, because it runs before
+ * every API call -- see BudgetGuard.
+ */
+export async function recordSpend(userId: number, usd: number, kind: string, model: string): Promise<void> {
+  await getPool().query('INSERT INTO ai_spend (user_id, usd, kind, model) VALUES ($1, $2, $3, $4)', [
+    userId, usd, kind, model,
+  ]);
+}
+
+export async function spentLast24h(userId: number): Promise<number> {
+  const { rows } = await getPool().query(
+    `SELECT COALESCE(sum(usd), 0)::float8 AS total
+       FROM ai_spend WHERE user_id = $1 AND at > now() - interval '24 hours'`,
+    [userId]
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
+export async function spendBreakdown(userId: number): Promise<{ kind: string; calls: number; usd: number }[]> {
+  const { rows } = await getPool().query(
+    `SELECT kind, count(*)::int AS calls, sum(usd)::float8 AS usd
+       FROM ai_spend WHERE user_id = $1 AND at > now() - interval '24 hours'
+      GROUP BY kind ORDER BY usd DESC`,
+    [userId]
+  );
+  return rows as { kind: string; calls: number; usd: number }[];
+}
+
+// --- content-addressed AI cache, shared across users -----------------------
+
+/**
+ * The cache is keyed by content hash, so two users looking at the same posting
+ * with the same profile version would share an answer. In practice the key
+ * includes the profile version, and profiles differ per person, so entries are
+ * effectively private anyway -- but the sharing is deliberate and safe: a cache
+ * hit can only ever return the answer to an identical question.
+ *
+ * This exists because a deployed instance has no writable disk. `ai_cache` was
+ * already in the schema for exactly this.
+ */
+export async function cacheGet(kind: string, key: string, model: string): Promise<unknown | null> {
+  const { rows } = await getPool().query(
+    'SELECT response FROM ai_cache WHERE kind = $1 AND cache_key = $2 AND model = $3',
+    [kind, key, model]
+  );
+  return rows[0]?.response ?? null;
+}
+
+export async function cacheSet(
+  kind: string,
+  key: string,
+  model: string,
+  value: unknown,
+  usage: { inputTokens: number; outputTokens: number }
+): Promise<void> {
+  await getPool().query(
+    `INSERT INTO ai_cache (kind, cache_key, model, response, input_tokens, output_tokens)
+          VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (kind, cache_key, model) DO UPDATE SET response = EXCLUDED.response`,
+    [kind, key, model, JSON.stringify(value), usage.inputTokens, usage.outputTokens]
+  );
 }

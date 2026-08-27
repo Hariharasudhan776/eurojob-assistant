@@ -1,6 +1,7 @@
-import { latestProfile } from '@/lib/db/repo';
+import { latestProfile, unscoredJobs } from '@/lib/db/repo';
 import { currentUserId } from '@/lib/session';
 import { Card, Pill } from '@/components/ui';
+import { ProfileTools } from '@/components/ProfileTools';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,26 @@ export default async function ProfilePage() {
 
   if (!profile) {
     return (
-      <Card title="No profile">
-        <p className="text-sm text-[var(--color-muted)]">Run npm run db:migrate to load one.</p>
+      <Card title="No profile yet">
+        <p className="text-sm text-[var(--color-muted)]">
+          Nothing can be scored or written without one. Upload yours as JSON —{' '}
+          <a href="/api/profile/template" className="text-[var(--color-accent)]">
+            start from the template
+          </a>
+          . Locally you can also drop a file in <code className="text-[var(--color-fg)]">data/</code> and run{' '}
+          <code className="text-[var(--color-fg)]">npm run db:migrate</code>.
+        </p>
+        <div className="mt-4">
+          <ProfileTools version={0} unscored={0} />
+        </div>
       </Card>
     );
   }
+
+  // How much of the shared feed has not been scored against this profile yet.
+  // Jobs are collected once for everyone; scores are per person, so a profile
+  // uploaded between two syncs starts behind.
+  const { remaining: unscored } = await unscoredJobs(profile.id, 1);
 
   const p = profile.data;
   const byCategory = new Map<string, typeof p.skills>();
@@ -96,11 +112,23 @@ export default async function ProfilePage() {
 
       <Card title="Editing this">
         <p className="text-sm text-[var(--color-muted)]">
-          The profile lives in <code className="text-[var(--color-fg)]">data/profile.v{p.version}.json</code>. Copy
-          it to a higher version number, edit it, then run{' '}
-          <code className="text-[var(--color-fg)]">npm run db:migrate</code>. Versioning means old matches stay
-          explainable against the facts that were true when they were scored.
+          Upload a new version below, or edit{' '}
+          <code className="text-[var(--color-fg)]">data/profile.v{p.version}.json</code> and run{' '}
+          <code className="text-[var(--color-fg)]">npm run db:migrate</code> if you are working locally. Either way a
+          new version is created and the old one is kept: every match records the profile version that scored it, so
+          an old result stays explainable against the facts that were true at the time.
         </p>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">
+          Start from the{' '}
+          <a href="/api/profile/template" className="text-[var(--color-accent)]">
+            template
+          </a>{' '}
+          if you want the exact shape. Every skill needs its <code className="text-[var(--color-fg)]">evidence</code>{' '}
+          line or the upload is rejected.
+        </p>
+        <div className="mt-4">
+          <ProfileTools version={p.version} unscored={unscored} />
+        </div>
       </Card>
     </div>
   );

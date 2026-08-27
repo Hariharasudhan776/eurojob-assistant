@@ -14,7 +14,9 @@
     "test": "node --test --experimental-strip-types \"test/*.test.ts\"",
     "test:all": "node --test --experimental-strip-types \"test/*.test.ts\" \"test/integration/*.test.ts\"",
     "jobs:analyse": "node --experimental-strip-types scripts/analyse.ts",
-    "sync": "node --experimental-strip-types scripts/sync.ts"
+    "sync": "node --experimental-strip-types scripts/sync.ts",
+    "user:password": "node --experimental-strip-types scripts/set-password.ts",
+    "db:copy": "node --experimental-strip-types scripts/copy-to-remote.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

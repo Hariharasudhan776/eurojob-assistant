@@ -1,18 +1,87 @@
 @import "tailwindcss";
 
+/*
+ * "Colorful gradient bold" theme. The old flat tokens are kept (other pages
+ * still reference them) and a vivid gradient layer is added on top.
+ */
 @theme {
-  --color-ink: #0d1117;
-  --color-panel: #161b22;
-  --color-line: #2a313c;
-  --color-fg: #e6edf3;
-  --color-muted: #8b949e;
-  --color-accent: #4493f8;
-  --color-good: #3fb950;
-  --color-warn: #d29922;
-  --color-bad: #f85149;
+  --color-ink: #0a0710;
+  --color-panel: #150f22;
+  --color-line: #2a2140;
+  --color-fg: #f2edff;
+  --color-muted: #a99fc7;
+  --color-accent: #a06bff;
+  --color-good: #34d399;
+  --color-warn: #fbbf24;
+  --color-bad: #fb5b7d;
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  /* Reusable gradients — the "bold" of the theme. */
+  --grad-violet: linear-gradient(135deg, #7c3aed 0%, #d946ef 100%);
+  --grad-blue: linear-gradient(135deg, #2563eb 0%, #22d3ee 100%);
+  --grad-pink: linear-gradient(135deg, #ec4899 0%, #f97316 100%);
+  --grad-green: linear-gradient(135deg, #059669 0%, #34d399 100%);
+  --grad-brand: linear-gradient(120deg, #a06bff 0%, #ff6bd6 50%, #ffa14a 100%);
 }
 
 html, body { background: var(--color-ink); color: var(--color-fg); }
-body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+body {
+  font-family: var(--font-body);
+  /* Soft coloured "mesh" behind everything so no page reads as a blank slab. */
+  background-color: var(--color-ink);
+  background-image:
+    radial-gradient(60rem 60rem at 15% -10%, rgba(124, 58, 237, 0.22), transparent 60%),
+    radial-gradient(50rem 50rem at 100% 0%, rgba(236, 72, 153, 0.16), transparent 55%),
+    radial-gradient(45rem 45rem at 50% 120%, rgba(37, 99, 235, 0.18), transparent 60%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+h1, h2, h3, .font-display { font-family: var(--font-display); }
+
 /* Money and scores are compared vertically, so digits must not shift width. */
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* Text that sits inside a gradient fill. */
+.text-gradient {
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Glass card used across the redesigned pages. */
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 40px -20px rgba(0,0,0,0.8);
+}
+
+.glass-hover { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.glass-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(160,107,255,0.5);
+  box-shadow: 0 24px 60px -24px rgba(160,107,255,0.45);
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.animate-rise { animation: rise .5s cubic-bezier(.2,.7,.2,1) both; }
+
+@keyframes grow-bar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/*
+ * Native <select> popups render using the control's own background. A glassy,
+ * semi-transparent select therefore produces an unreadable see-through option
+ * list, so the option rows are given a solid, opaque background here. (Options
+ * carry no utility class, so this element rule wins cleanly.)
+ */
+option {
+  background-color: #1b1430;
+  color: var(--color-fg);
+}

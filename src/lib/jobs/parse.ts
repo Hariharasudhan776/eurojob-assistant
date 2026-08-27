@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { EUROPEAN_COUNTRIES, type RemoteMode, type Tristate } from './types.ts';
+import { COUNTRY_NAMES, type RemoteMode, type Tristate } from './types.ts';
 
 /**
  * Shared parsing helpers for job postings.
@@ -33,8 +33,29 @@ export function htmlToText(input: string): string {
 }
 
 const COUNTRY_BY_NAME = new Map<string, string>(
-  Object.entries(EUROPEAN_COUNTRIES).map(([code, name]) => [name.toLowerCase(), code])
+  Object.entries(COUNTRY_NAMES).map(([code, name]) => [name.toLowerCase(), code])
 );
+
+/**
+ * US state and Canadian province abbreviations.
+ *
+ * Needed because American postings write "San Francisco, CA" rather than naming
+ * the country, and without this every US job would be stored with a null country
+ * and drop out of the country filter entirely.
+ *
+ * The overlap is the interesting part: "CA" is California here, not Canada, and
+ * that is the right reading -- in a "City, XX" location the second part is a
+ * subdivision, not a country. Canadian cities in these feeds appear as
+ * "Toronto, Canada" or "Toronto, ON", which the province list below covers.
+ */
+const US_STATES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL',
+  'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT',
+  'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI',
+  'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+]);
+
+const CA_PROVINCES = new Set(['ON', 'QC', 'BC', 'AB', 'MB', 'SK', 'NS', 'NB', 'NL', 'PE', 'YT', 'NT', 'NU']);
 
 /** Extra spellings and major cities that identify a country in a location string. */
 const LOCATION_HINTS: Record<string, string> = {
@@ -61,6 +82,46 @@ const LOCATION_HINTS: Record<string, string> = {
   estonia: 'EE', tallinn: 'EE', tartu: 'EE',
   'united kingdom': 'GB', uk: 'GB', england: 'GB', scotland: 'GB', wales: 'GB', london: 'GB',
   manchester: 'GB', birmingham: 'GB', edinburgh: 'GB', glasgow: 'GB', bristol: 'GB', leeds: 'GB',
+
+  // --- the rest of the world -------------------------------------------------
+  // Added when collection stopped being Europe-only. Cities are included only
+  // where they are unambiguous: "Cambridge" and "Hyderabad, Sindh" are exactly
+  // the kind of guess this module refuses to make, so they are left out and the
+  // country comes back null rather than wrong.
+  'united states': 'US', usa: 'US', 'u.s.': 'US', 'united states of america': 'US',
+  'new york': 'US', 'san francisco': 'US', seattle: 'US', austin: 'US', chicago: 'US',
+  boston: 'US', denver: 'US', atlanta: 'US', 'los angeles': 'US', 'washington dc': 'US',
+  canada: 'CA', toronto: 'CA', vancouver: 'CA', montreal: 'CA', montréal: 'CA', ottawa: 'CA', calgary: 'CA',
+  mexico: 'MX', 'mexico city': 'MX', 'méxico': 'MX', guadalajara: 'MX',
+  brazil: 'BR', brasil: 'BR', 'sao paulo': 'BR', 'são paulo': 'BR', 'rio de janeiro': 'BR',
+  argentina: 'AR', 'buenos aires': 'AR',
+  chile: 'CL', santiago: 'CL', colombia: 'CO', bogota: 'CO', 'bogotá': 'CO',
+  australia: 'AU', sydney: 'AU', melbourne: 'AU', brisbane: 'AU', perth: 'AU', canberra: 'AU',
+  'new zealand': 'NZ', auckland: 'NZ', wellington: 'NZ',
+  singapore: 'SG',
+  india: 'IN', bangalore: 'IN', bengaluru: 'IN', chennai: 'IN', hyderabad: 'IN',
+  pune: 'IN', mumbai: 'IN', gurgaon: 'IN', gurugram: 'IN', noida: 'IN', kochi: 'IN', coimbatore: 'IN',
+  japan: 'JP', tokyo: 'JP', osaka: 'JP',
+  china: 'CN', beijing: 'CN', shanghai: 'CN', shenzhen: 'CN',
+  'hong kong': 'HK', 'south korea': 'KR', seoul: 'KR',
+  malaysia: 'MY', 'kuala lumpur': 'MY', philippines: 'PH', manila: 'PH',
+  indonesia: 'ID', jakarta: 'ID', vietnam: 'VN', hanoi: 'VN',
+  israel: 'IL', 'tel aviv': 'IL',
+  'united arab emirates': 'AE', uae: 'AE', dubai: 'AE', 'abu dhabi': 'AE',
+  'saudi arabia': 'SA', riyadh: 'SA', qatar: 'QA', doha: 'QA',
+  oman: 'OM', muscat: 'OM', kuwait: 'KW', bahrain: 'BH', manama: 'BH',
+  'south africa': 'ZA', johannesburg: 'ZA', 'cape town': 'ZA', pretoria: 'ZA', durban: 'ZA',
+  egypt: 'EG', cairo: 'EG', kenya: 'KE', nairobi: 'KE', nigeria: 'NG', lagos: 'NG',
+  morocco: 'MA', rabat: 'MA', casablanca: 'MA',
+  russia: 'RU', moscow: 'RU',
+  ukraine: 'UA', kyiv: 'UA', kiev: 'UA',
+  turkey: 'TR', 'türkiye': 'TR', istanbul: 'TR',
+  greece: 'GR', athens: 'GR', romania: 'RO', bucharest: 'RO', cluj: 'RO',
+  bulgaria: 'BG', sofia: 'BG', hungary: 'HU', budapest: 'HU',
+  croatia: 'HR', zagreb: 'HR', serbia: 'RS', belgrade: 'RS',
+  slovakia: 'SK', bratislava: 'SK', slovenia: 'SI', ljubljana: 'SI',
+  lithuania: 'LT', vilnius: 'LT', latvia: 'LV', riga: 'LV',
+  cyprus: 'CY', malta: 'MT', iceland: 'IS', reykjavik: 'IS',
 };
 
 /**
@@ -76,6 +137,16 @@ export function parseLocation(location: string | null | undefined): { country: s
 
   // Explicit "City, Country" is the common and most reliable shape.
   const parts = cleaned.split(',').map((p) => p.trim()).filter(Boolean);
+
+  // "City, ST" -- an American or Canadian posting that never names its country.
+  // Checked before the name lookup because a bare two-letter subdivision would
+  // otherwise fall through to the substring scan and match nothing.
+  if (parts.length >= 2) {
+    const tail = parts[parts.length - 1]!.toUpperCase().replace(/[^A-Z]/g, '');
+    if (US_STATES.has(tail)) return { country: 'US', city: parts[0] ?? null };
+    if (CA_PROVINCES.has(tail)) return { country: 'CA', city: parts[0] ?? null };
+  }
+
   for (const part of [...parts].reverse()) {
     const code = COUNTRY_BY_NAME.get(part.toLowerCase()) ?? LOCATION_HINTS[part.toLowerCase()];
     if (code) {

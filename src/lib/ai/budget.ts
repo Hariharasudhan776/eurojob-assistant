@@ -19,11 +19,35 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { recordSpend, spendBreakdown, spentLast24h } from '../db/repo.ts';
 
 export interface BudgetLimits {
   perRunUsd: number;
+  /**
+   * PER USER, per rolling 24 hours -- not per instance. A shared allowance is
+   * not an allowance: the first person to generate a few tailored resumes would
+   * otherwise spend everyone else's day.
+   */
   dailyUsd: number;
   perCallUsd: number;
+}
+
+/**
+ * What a budget guard needs from a ledger.
+ *
+ * `spentLast24h` is deliberately SYNCHRONOUS. The check happens inside
+ * AiClient.complete, immediately before the request, and making it async there
+ * would mean an await between the check and the call -- a window in which two
+ * concurrent requests could each pass a cap that only one of them fits under.
+ * The database-backed ledger therefore loads its 24-hour total once, up front,
+ * and keeps it current in memory as calls are recorded.
+ */
+export interface Ledger {
+  spentLast24h(now?: number): number;
+  record(usd: number, kind: string, model: string, now?: number): void;
+  breakdown(now?: number): { kind: string; calls: number; usd: number }[];
+  /** Awaited by the caller before it responds, so durable writes are not lost. */
+  flush(): Promise<void>;
 }
 
 export const DEFAULT_LIMITS: BudgetLimits = {
@@ -63,7 +87,7 @@ interface LedgerEntry {
  * A per-process counter would reset every time the script is run, which is
  * exactly how four separate runs added up unnoticed.
  */
-export class SpendLedger {
+export class SpendLedger implements Ledger {
   private readonly path: string;
   private entries: LedgerEntry[] = [];
 
@@ -109,16 +133,95 @@ export class SpendLedger {
       .map(([kind, v]) => ({ kind, ...v }))
       .sort((a, b) => b.usd - a.usd);
   }
+
+  /** Writes are already synchronous here; nothing to wait for. */
+  async flush(): Promise<void> {}
 }
 
 export const defaultLedgerPath = (root: string) => join(root, 'data', 'ai-spend.json');
 
+/**
+ * Per-user ledger in PostgreSQL.
+ *
+ * Two reasons this replaces the file for anything user-facing:
+ *
+ *  1. **Multi-user.** One file is one allowance for the whole instance.
+ *  2. **Deployment.** A serverless host has no writable disk that survives a
+ *     request, so a file-based cap silently becomes no cap at all -- every
+ *     invocation would start from zero.
+ *
+ * The 24-hour total is read once at construction (`load`) so the pre-call check
+ * stays synchronous, then kept current in memory. Recorded spend is written
+ * through to the database; `flush()` waits for those writes, and the API route
+ * awaits it before responding so a killed function cannot lose the charge.
+ */
+export class DbSpendLedger implements Ledger {
+  private readonly userId: number;
+  private opening: number;
+  private readonly session: { at: number; usd: number; kind: string; model: string }[] = [];
+  private pending: Promise<unknown>[] = [];
+  private writeFailure: Error | null = null;
+
+  private constructor(userId: number, opening: number) {
+    this.userId = userId;
+    this.opening = opening;
+  }
+
+  static async load(userId: number): Promise<DbSpendLedger> {
+    return new DbSpendLedger(userId, await spentLast24h(userId));
+  }
+
+  spentLast24h(): number {
+    // The opening figure came from the database; session spend is what this
+    // process has added since. Recorded rows are not re-read, which would be a
+    // round trip in the middle of the hot path for no new information.
+    return this.opening + this.session.reduce((sum, e) => sum + e.usd, 0);
+  }
+
+  record(usd: number, kind: string, model: string, now = Date.now()): void {
+    this.session.push({ at: now, usd, kind, model });
+    this.pending.push(
+      recordSpend(this.userId, usd, kind, model).catch((err: unknown) => {
+        // A failed write must not be silently forgotten: it would mean spend
+        // that happened and was never counted, which is how a cap stops being a
+        // cap. It is surfaced by flush().
+        this.writeFailure = err instanceof Error ? err : new Error(String(err));
+      })
+    );
+  }
+
+  breakdown(): { kind: string; calls: number; usd: number }[] {
+    const byKind = new Map<string, { calls: number; usd: number }>();
+    for (const entry of this.session) {
+      const current = byKind.get(entry.kind) ?? { calls: 0, usd: 0 };
+      byKind.set(entry.kind, { calls: current.calls + 1, usd: current.usd + entry.usd });
+    }
+    return [...byKind.entries()].map(([kind, v]) => ({ kind, ...v })).sort((a, b) => b.usd - a.usd);
+  }
+
+  async flush(): Promise<void> {
+    const waiting = this.pending;
+    this.pending = [];
+    await Promise.all(waiting);
+    if (this.writeFailure) {
+      const failure = this.writeFailure;
+      this.writeFailure = null;
+      throw new Error(`AI spend was charged but could not be recorded: ${failure.message}`);
+    }
+  }
+
+  /** For the Settings page: what this user has spent, by stage, in 24 hours. */
+  static dailyBreakdown(userId: number) {
+    return spendBreakdown(userId);
+  }
+}
+
 export class BudgetGuard {
   private readonly limits: BudgetLimits;
-  private readonly ledger: SpendLedger;
+  private readonly ledger: Ledger;
   private runSpend = 0;
 
-  constructor(ledger: SpendLedger, limits: BudgetLimits = DEFAULT_LIMITS) {
+  constructor(ledger: Ledger, limits: BudgetLimits = DEFAULT_LIMITS) {
     this.ledger = ledger;
     this.limits = limits;
   }
@@ -168,5 +271,23 @@ export class BudgetGuard {
   record(actualUsd: number, kind: string, model: string) {
     this.runSpend += actualUsd;
     this.ledger.record(actualUsd, kind, model);
+  }
+
+  /**
+   * Wait for the ledger's durable writes. Callers that can be terminated the
+   * moment they respond -- a serverless route handler -- must await this before
+   * returning, or a charge can be lost and the cap silently loosened.
+   */
+  flush(): Promise<void> {
+    return this.ledger.flush();
+  }
+
+  spentLast24h(): number {
+    return this.ledger.spentLast24h();
+  }
+
+  /** Spend by stage, for reports. */
+  breakdown(): { kind: string; calls: number; usd: number }[] {
+    return this.ledger.breakdown();
   }
 }

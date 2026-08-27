@@ -24,7 +24,11 @@ import type { NormalisedJob } from '../src/lib/jobs/types.ts';
  * not a line in a prompt.
  */
 
-const profile = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.v3.json', 'utf8')));
+// v4 is the live profile: v3 plus the skills his own experience bullets already
+// evidenced but the skills list never captured (stored procedures and triggers,
+// production support, root cause analysis, SDLC, requirements gathering,
+// stakeholder management, data quality, forecasting).
+const profile = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.v4.json', 'utf8')));
 
 const dbaJob = (description: string, title = 'Senior Oracle Database Administrator'): NormalisedJob => ({
   sourceSlug: 'test',
@@ -295,4 +299,50 @@ test('construction QA/QC never credits a software testing requirement', () => {
   const named = [...plan.confirm, ...plan.gaps].map((e) => e.requirement);
   assert.ok(named.includes('software-testing'), 'software testing should be reported as missing');
   assert.ok(named.includes('test-automation'), 'test automation should be reported as missing');
+});
+
+test('the enterprise vocabulary every posting uses is visible', () => {
+  // Reported symptom: a posting mentioning software lifecycle and database work
+  // was tailored and none of it came back. Not a generation failure -- none of
+  // these terms existed in the taxonomy, so the requirement was never seen.
+  for (const term of [
+    'SDLC', 'software development lifecycle', 'requirement gathering', 'UAT',
+    'production support', 'root cause analysis', 'stored procedures', 'triggers',
+    'normalisation', 'ERD', 'data cleansing', 'technical documentation',
+    'stakeholder management', 'Excel', 'SSRS', 'ITIL',
+  ]) {
+    assert.ok(extractSkills(term).length > 0, `${term} is invisible to the matcher`);
+  }
+});
+
+test('stored procedures is claimed, because the profile evidences it verbatim', () => {
+  // His PL/SQL evidence reads "stored procedures, functions and triggers" -- core
+  // daily work for five years -- and a posting asking for stored procedures used
+  // to score it as unrecognised.
+  const { plan } = planFor(`Requirements:
+- PL/SQL stored procedures, functions and triggers
+- Database design and normalisation
+- Full SDLC
+- Production support and root cause analysis`);
+
+  const printed = plan.mirror.map((e) => e.requirement);
+  for (const requirement of ['stored-procedures', 'sdlc', 'prod-support', 'rca', 'data-modelling']) {
+    assert.ok(printed.includes(requirement), `${requirement} should reach the resume, got ${printed.join(', ')}`);
+  }
+});
+
+test('skills the profile does not evidence are still refused', () => {
+  // The v4 additions came from his own bullets. Excel, Power BI and UAT did not,
+  // so they must remain gaps -- otherwise the additions were fabrication with
+  // extra steps.
+  const { plan } = planFor(`Requirements:
+- Advanced Excel: pivot tables and VLOOKUP
+- Power BI dashboards
+- UAT coordination
+- Kubernetes`);
+
+  const printed = plan.mirror.map((e) => e.requirement);
+  for (const requirement of ['excel', 'uat', 'kubernetes']) {
+    assert.ok(!printed.includes(requirement), `${requirement} must not be claimed`);
+  }
 });

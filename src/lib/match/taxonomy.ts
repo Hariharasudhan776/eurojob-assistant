@@ -184,7 +184,7 @@ export const TAXONOMY: TaxonomyEntry[] = [
     category: 'database_admin',
     aliases: ['data migration', 'etl', 'data transformation', 'database migration', 'data loading'],
   },
-  { canonical: 'data-modelling', display: 'Data Modelling', category: 'database_admin', aliases: ['data modeling', 'schema design', 'database design', 'er modelling'] },
+  { canonical: 'data-modelling', display: 'Data Modelling', category: 'database_admin', aliases: ['data modeling', 'schema design', 'database design', 'er modelling', 'normalisation', 'normalization', 'erd', 'entity relationship', 'oltp', 'relational design'] },
 
   // --- languages & runtime ---
   { canonical: 'javascript', display: 'JavaScript', category: 'language', aliases: ['js', 'es6', 'ecmascript', 'javascript es6'], related: { typescript: 0.7 } },
@@ -292,6 +292,111 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'vector-db', display: 'Vector databases', category: 'database', aliases: ['vector database', 'pinecone', 'weaviate', 'pgvector', 'embeddings store', 'qdrant', 'chroma'] },
   { canonical: 'langchain', display: 'LangChain', category: 'framework', aliases: ['llamaindex', 'llama index'], related: { 'llm-integration': 0.4 } },
   { canonical: 'fine-tuning', display: 'Fine-tuning & evaluation', category: 'ai', aliases: ['fine tuning', 'fine-tuning', 'model evaluation', 'evals', 'rlhf'], related: { 'machine-learning': 0.5 } },
+
+  // --- the words every enterprise posting uses ------------------------------
+  //
+  // Added after the candidate reported tailoring a resume for a posting that
+  // mentioned software lifecycle and database work and seeing none of it come
+  // back. It was not a generation failure: none of these terms existed here, so
+  // the matcher never saw the requirement, never mirrored it, and never reported
+  // it as a gap.
+  //
+  // The worst of them was `stored procedures`. The candidate's own PL/SQL
+  // evidence reads "stored procedures, functions and triggers" -- core, daily,
+  // five-year experience -- and a posting asking for stored procedures scored it
+  // as unrecognised. This is the most common phrase in Oracle and SQL Server
+  // adverts and it was invisible.
+  {
+    canonical: 'stored-procedures',
+    display: 'Stored procedures & triggers',
+    category: 'database_admin',
+    aliases: ['stored procedures', 'stored procedure', 'triggers', 'database functions',
+              'database packages', 'cursors', 'user defined functions'],
+    related: { plsql: 0.8, sql: 0.5, pgplsql: 0.7 },
+  },
+  {
+    canonical: 'sdlc',
+    display: 'Software Development Lifecycle',
+    category: 'soft',
+    aliases: ['sdlc', 'software development lifecycle', 'software development life cycle',
+              'full development lifecycle', 'end-to-end development', 'waterfall'],
+    related: { agile: 0.4 },
+  },
+  {
+    canonical: 'requirements',
+    display: 'Requirements gathering & analysis',
+    category: 'soft',
+    aliases: ['requirement gathering', 'requirements gathering', 'requirements analysis',
+              'requirement analysis', 'business requirements', 'business analysis',
+              'functional specification', 'functional specifications'],
+  },
+  {
+    canonical: 'uat',
+    display: 'UAT & user training',
+    category: 'soft',
+    aliases: ['uat', 'user acceptance testing', 'user training', 'end user training', 'end-user training'],
+  },
+  {
+    canonical: 'prod-support',
+    display: 'Production & application support',
+    category: 'soft',
+    aliases: ['production support', 'application support', 'l2 support', 'l3 support',
+              'level 2 support', 'level 3 support', 'on-call', 'incident management', 'service desk'],
+  },
+  {
+    canonical: 'itil',
+    display: 'ITIL / change management',
+    category: 'soft',
+    aliases: ['itil', 'change management', 'problem management', 'release management'],
+    related: { 'prod-support': 0.4 },
+  },
+  {
+    canonical: 'rca',
+    display: 'Root cause analysis & troubleshooting',
+    category: 'soft',
+    aliases: ['root cause analysis', 'rca', 'troubleshooting', 'debugging', 'issue resolution', 'fault finding'],
+  },
+  {
+    canonical: 'documentation',
+    display: 'Technical documentation',
+    category: 'soft',
+    aliases: ['technical documentation', 'functional documentation', 'user manuals', 'solution documentation'],
+  },
+  {
+    canonical: 'stakeholders',
+    display: 'Stakeholder management',
+    category: 'soft',
+    aliases: ['stakeholder management', 'stakeholder engagement', 'client facing', 'customer facing',
+              'business stakeholders'],
+  },
+  {
+    canonical: 'excel',
+    display: 'Advanced Excel',
+    category: 'tool',
+    aliases: ['excel', 'ms excel', 'microsoft excel', 'vlookup', 'pivot table', 'pivot tables',
+              'power query', 'spreadsheets'],
+  },
+  {
+    canonical: 'report-tools',
+    display: 'Reporting tools (SSRS / Crystal / BI Publisher)',
+    category: 'tool',
+    aliases: ['ssrs', 'ssis', 'crystal reports', 'jasper reports', 'bi publisher', 'oracle reports'],
+    related: { reporting: 0.5 },
+  },
+  {
+    canonical: 'data-quality',
+    display: 'Data quality & cleansing',
+    category: 'database_admin',
+    aliases: ['data cleansing', 'data cleaning', 'data quality', 'data validation',
+              'data integrity', 'referential integrity', 'data reconciliation'],
+  },
+  {
+    canonical: 'forecasting',
+    display: 'Forecasting & demand prediction',
+    category: 'domain',
+    aliases: ['forecasting', 'demand forecasting', 'demand prediction', 'sales forecasting',
+              'predictive analytics'],
+  },
 
   // --- os ---
   { canonical: 'linux', display: 'Linux', category: 'os', aliases: ['ubuntu', 'rhel', 'centos', 'unix'] },

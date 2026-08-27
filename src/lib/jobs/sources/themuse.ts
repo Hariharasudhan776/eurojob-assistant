@@ -76,6 +76,15 @@ const DEFAULT_LOCATIONS = [
   'Oslo, Norway',
   'Helsinki, Finland',
   'Luxembourg, Luxembourg',
+  // The Gulf. Adzuna has no endpoint for any of these, so without them the
+  // region is a silent hole in the feed rather than a thin part of it -- and it
+  // is where this candidate's ERP experience trades best and where he already
+  // holds a work visa.
+  'Dubai, United Arab Emirates',
+  'Abu Dhabi, United Arab Emirates',
+  'Doha, Qatar',
+  'Riyadh, Saudi Arabia',
+  'Muscat, Oman',
 ];
 
 /** The API's own taxonomy. Filtering at the source beats discarding here. */

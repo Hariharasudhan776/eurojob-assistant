@@ -35,8 +35,18 @@ export const DEFAULT_SEARCH: JobQuery = {
     'Database Administrator', 'SQL Developer', 'ERP Developer', 'ERP Consultant',
     'Application Developer', 'Backend Developer', 'Software Developer', 'Software Engineer',
     'Data Engineer', 'Technical Consultant',
+    // ERP is 2.5 years of this profile's strongest domain work -- Axpert module
+    // development, finance, inventory and logistics at Northwind and Meridian --
+    // and it was reachable only through the two generic 'ERP Developer' and
+    // 'ERP Consultant' titles. These are the titles those roles are actually
+    // advertised under, and 'Axpert' is searched by name: it is a smaller
+    // vendor, well known in India and the Gulf, so a keyword search finds
+    // postings that no generic title query returns.
+    'Axpert Developer', 'Axpert ERP', 'ERP Functional Consultant', 'ERP Support Engineer',
+    'ERP Analyst', 'ERP Implementation Consultant', 'ERP Technical Consultant',
+    'Business Applications Developer', 'Data Analyst',
   ],
-  keywords: ['oracle', 'plsql', 'postgresql', 'sql', 'database', 'erp'],
+  keywords: ['oracle', 'plsql', 'postgresql', 'sql', 'database', 'erp', 'axpert'],
   postedWithinDays: 30,
   limit: Number(process.env.JOB_COLLECTION_LIMIT || 600),
 };
@@ -51,4 +61,11 @@ export const DEFAULT_SEARCH: JobQuery = {
  */
 export const DEFAULT_TARGET_COUNTRIES = [
   'DE', 'NL', 'SE', 'FI', 'DK', 'NO', 'IE', 'BE', 'AT', 'FR', 'CH', 'LU', 'PL',
+  // India and the Gulf. Europe remains the priority and is unaffected -- the
+  // location component checks membership of this list, so adding markets lifts
+  // those postings without lowering any European one. They are here because
+  // this candidate's ERP experience is worth more in the markets where Axpert
+  // is actually sold, and because he already lives and works in Oman, so no
+  // sponsorship question arises for the Gulf at all.
+  'IN', 'AE', 'SA', 'QA', 'OM', 'KW', 'BH',
 ];

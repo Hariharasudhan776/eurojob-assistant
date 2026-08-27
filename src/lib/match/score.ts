@@ -1,7 +1,7 @@
 import type { CandidateProfile, Skill } from '../resume/profile.ts';
 import { SKILL_LEVEL_RANK } from '../resume/profile.ts';
 import { canonicalise, display, extractSkillMentions, extractSkills, lookup, transferWeight } from './taxonomy.ts';
-import { assessRelevance, shrinkRatio, type RelevanceVerdict } from './relevance.ts';
+import { assessRelevance, detectStudentOnlyRole, shrinkRatio, type RelevanceVerdict } from './relevance.ts';
 import type { NormalisedJob } from '../jobs/types.ts';
 
 /**
@@ -464,6 +464,21 @@ ${job.description}`).map((m) => [m.canonical, m.surface])
 
   const blockers = [...locationScored.blockers, ...languageScored.blockers];
 
+  /**
+   * A role the candidate is ineligible for, however well they fit it.
+   *
+   * Capped as hard as an out-of-scope posting and for the same reason: a
+   * "Product Engineer — Working Student" post scored 82% and came back HIGHLY
+   * RECOMMENDED because every component was right on its own terms, while the
+   * one requirement that actually decided the outcome -- current university
+   * enrolment -- was sitting unread in the job title.
+   */
+  const studentOnly = detectStudentOnlyRole(job.title, job.description, profile.totalYears);
+  if (studentOnly) {
+    overall = Math.min(overall, 30);
+    blockers.push(studentOnly);
+  }
+
   // An out-of-scope posting is capped hard rather than nudged. Incidental
   // keyword overlap must never let a non-engineering role outrank a real one,
   // and the spec's priority is a short list of genuinely suitable jobs (§22).
@@ -480,7 +495,7 @@ ${job.description}`).map((m) => [m.canonical, m.surface])
   // perfect Oracle match that cannot sponsor a visa is not "highly recommended"
   // for someone who needs sponsorship.
   let recommendation: MatchResult['recommendation'];
-  if (relevance.outOfScope) {
+  if (relevance.outOfScope || studentOnly) {
     recommendation = 'low';
   } else if (blockers.length > 0) {
     recommendation = overall >= 70 ? 'possible' : 'low';

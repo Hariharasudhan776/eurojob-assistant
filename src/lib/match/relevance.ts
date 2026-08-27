@@ -141,3 +141,76 @@ export function shrinkRatio(earned: number, total: number, k = 3, prior = 0.45):
   if (total <= 0) return prior;
   return (earned + k * prior) / (total + k);
 }
+
+/**
+ * Roles whose entry requirement is a status the candidate cannot hold.
+ *
+ * A "Product Engineer — Working Student" posting scored 82% and came back
+ * HIGHLY RECOMMENDED for a candidate with 5.2 years who needs visa sponsorship.
+ * Every component was right on its own terms: the discipline is technical, the
+ * four recognised skills all matched, no minimum experience was stated so
+ * experience scored a neutral 75. The disqualifying requirement -- "you are
+ * currently enrolled at a university" -- was invisible, and it was sitting in
+ * the job title the whole time.
+ *
+ * This is the same shape of failure as the "Junior Community Manager" case that
+ * `classifyTitle` exists to catch. That one filters the wrong DISCIPLINE; this
+ * one filters the wrong ELIGIBILITY, and neither is expressible as a score
+ * because no amount of technical fit makes a candidate a student again.
+ *
+ * It is judged against the profile rather than absolutely, because the app has
+ * several users. A working-student post is exactly right for someone with no
+ * professional experience yet, so it is only a blocker for a profile that has
+ * clearly moved past it.
+ *
+ * Deliberately NOT included: "junior", "entry level", "graduate" on its own. A
+ * junior role is a real, if unambitious, option -- it is a worse match, not an
+ * impossible one, and the score already handles that. "Graduate" alone is
+ * excluded because it far more often describes a degree than a scheme.
+ */
+const STUDENT_STATUS_TITLE = [
+  /\bworking\s+student\b/i,
+  /\bwerkstudent(?:in)?\b/i,
+  /\bstudent\s+(?:assistant|worker|helper)\b/i,
+  /\bstudentische[rn]?\s+hilfskraft\b/i,
+  /\bintern(?:ship)?\b/i,
+  /\bpraktik(?:um|ant(?:in)?)\b/i,
+  /\bstagiaire\b/i,
+  /\bapprentice(?:ship)?\b/i,
+  /\b(?:azubi|ausbildung|lehrling)\b/i,
+  /\bdual(?:es)?\s+(?:study|studium)\b/i,
+  /\btrainee\b/i,
+  /\bgraduate\s+(?:programme?|scheme|trainee)\b/i,
+  /\bplacement\s+year\b/i,
+];
+
+/** Confirming phrases in the body, for postings with a plain title. */
+const STUDENT_STATUS_BODY = [
+  /\b(?:currently|must be|are|be)\s+enrolled\s+(?:at|in|as)\b/i,
+  /\benrolled\s+(?:at|in)\s+a\s+(?:university|college|hochschule)\b/i,
+  /\bstudent\s+status\b/i,
+  /\bimmatrikuliert\b/i,
+  /\bvalid\s+(?:university\s+)?enrolment\b/i,
+];
+
+/** Past this many years, a student or trainee post is no longer a fit. */
+const OUTGROWN_AFTER_YEARS = 2;
+
+export function detectStudentOnlyRole(
+  title: string,
+  description: string,
+  profileYears: number
+): string | null {
+  if (profileYears < OUTGROWN_AFTER_YEARS) return null;
+
+  const inTitle = STUDENT_STATUS_TITLE.some((re) => re.test(title));
+  const inBody = STUDENT_STATUS_BODY.some((re) => re.test(description));
+  if (!inTitle && !inBody) return null;
+
+  const where = inTitle ? `The title "${title}" is` : 'The posting describes';
+  return (
+    `${where} a student, trainee or apprentice position, which requires a status ` +
+    `the profile no longer has after ${profileYears} years of professional work. ` +
+    'No amount of technical fit makes this applicable.'
+  );
+}

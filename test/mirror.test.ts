@@ -377,3 +377,64 @@ test('a bare section heading is structure, not a requirement', () => {
   } as never);
   assert.ok(nice.preferred.includes('kubernetes'), 'inline nice-to-haves must survive');
 });
+
+test('a student or trainee role is blocked, however well the skills fit', () => {
+  // Job 1824 (SumUp, "Product Engineer — Working Student") scored 82% and came
+  // back HIGHLY RECOMMENDED. Every component was right on its own terms; the
+  // requirement that decided it -- current university enrolment -- was sitting
+  // unread in the job title.
+  const job = dbaJob('Build web applications with React and Next.js. PL/SQL and SQL a plus.', 'Product Engineer — Working Student');
+  const match = scoreJob(profile, job, { preferredCountries: ['DE'] });
+
+  assert.ok(match.overall <= 30, `a working-student role scored ${match.overall}`);
+  assert.equal(match.recommendation, 'low');
+  assert.ok(match.blockers.some((b) => /student, trainee or apprentice/i.test(b)), 'the reason must be stated');
+});
+
+test('the block covers the words these roles are actually posted under', () => {
+  for (const title of [
+    'Werkstudent Business Analytics (m/w/d)',
+    'Events Intern (September - December)',
+    'Praktikum Softwareentwicklung',
+    'Apprentice Software Developer',
+    'Graduate Programme — Technology',
+    'Trainee Database Engineer',
+  ]) {
+    const match = scoreJob(profile, dbaJob('SQL and Oracle work.', title), { preferredCountries: ['DE'] });
+    assert.equal(match.recommendation, 'low', `not blocked: ${title}`);
+  }
+
+  // Body wording catches a posting whose title gives nothing away.
+  const sneaky = scoreJob(
+    profile,
+    dbaJob('You must be currently enrolled at a university. Oracle and SQL.', 'Product Engineer'),
+    { preferredCountries: ['DE'] }
+  );
+  assert.ok(sneaky.blockers.some((b) => /student, trainee or apprentice/i.test(b)));
+});
+
+test('ordinary roles are not caught by the student filter', () => {
+  // The filter must not swallow real jobs. "Junior" and "entry level" are worse
+  // matches, not impossible ones, and the score already handles that; and
+  // "graduate" alone far more often describes a degree than a scheme.
+  for (const title of [
+    'Senior Oracle Database Administrator',
+    'Junior Database Developer',
+    'Database Engineer (Entry Level)',
+    'Software Developer — International Team',
+  ]) {
+    const match = scoreJob(profile, dbaJob(DBA_DESCRIPTION, title), { preferredCountries: ['DE'] });
+    assert.ok(
+      !match.blockers.some((b) => /student, trainee or apprentice/i.test(b)),
+      `wrongly blocked: ${title}`
+    );
+  }
+
+  // "a graduate degree in computer science" must not read as a graduate scheme.
+  const degree = scoreJob(
+    profile,
+    dbaJob('Requirements:\n- A graduate degree in computer science\n- Oracle and PL/SQL', 'Database Engineer'),
+    { preferredCountries: ['DE'] }
+  );
+  assert.ok(!degree.blockers.some((b) => /student, trainee or apprentice/i.test(b)));
+});

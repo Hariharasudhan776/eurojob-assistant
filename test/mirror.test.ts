@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { extractSkillMentions, extractSkills, display } from '../src/lib/match/taxonomy.ts';
-import { scoreJob } from '../src/lib/match/score.ts';
+import { extractRequirements, scoreJob } from '../src/lib/match/score.ts';
 import { buildMirrorPlan, forbiddenBriefing, mirrorBriefing } from '../src/lib/resume/mirror.ts';
 import { auditResume } from '../src/lib/resume/audit.ts';
 import { selectSkills } from '../src/lib/docs/render.ts';
@@ -345,4 +345,35 @@ test('skills the profile does not evidence are still refused', () => {
   for (const requirement of ['excel', 'uat', 'kubernetes']) {
     assert.ok(!printed.includes(requirement), `${requirement} must not be claimed`);
   }
+});
+
+test('a bare section heading is structure, not a requirement', () => {
+  // Once the taxonomy gained an entry for requirements gathering, the literal
+  // word "Requirements:" heading almost every job advert became a matched
+  // requirement -- and because the candidate genuinely holds that skill, it was
+  // mirrored onto the resume as the bare word "Requirements", both in the skills
+  // list and mid-sentence in the summary.
+  const bare = extractRequirements({
+    title: 'Database Administrator',
+    description: 'Requirements:\n- Oracle and PL/SQL\nNice to have:\n- Docker',
+  } as never);
+  assert.ok(
+    !bare.required.includes('requirements-analysis'),
+    `a bare heading produced a skill: ${bare.required.join(', ')}`
+  );
+  assert.ok(bare.required.includes('oracle'), 'real requirements must survive');
+  assert.ok(bare.preferred.includes('docker'), 'the nice-to-have section must survive');
+
+  // A heading carrying content is still read, because the content is the point.
+  const inline = extractRequirements({
+    title: 'Business Analyst',
+    description: 'Requirements: gathering business requirements from stakeholders\n- Oracle',
+  } as never);
+  assert.ok(inline.required.includes('requirements-analysis'), 'a heading with content must still be read');
+
+  const nice = extractRequirements({
+    title: 'Developer',
+    description: 'Must have:\n- Oracle\nNice to have: Docker and Kubernetes',
+  } as never);
+  assert.ok(nice.preferred.includes('kubernetes'), 'inline nice-to-haves must survive');
 });

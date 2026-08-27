@@ -116,16 +116,36 @@ export function extractRequirements(job: NormalisedJob): { required: string[]; p
   const preferredLines: string[] = [];
   let inPreferred = false;
 
+  const requiredHeading =
+    /\b(?:requirements?|must have|we expect|your profile|qualifications?|what you bring|essential)\b/i;
+
+  /**
+   * Is this line nothing but a section heading?
+   *
+   * "Requirements:" on its own is structure, not a requirement. It matters
+   * because a heading word can itself be a skill name: once the taxonomy gained
+   * an entry for requirements gathering, the literal heading of nearly every job
+   * advert ever written became a matched requirement. The candidate genuinely
+   * holds that skill, so it was then mirrored onto the resume as the bare word
+   * "Requirements" -- in the skills list, and mid-sentence in the summary.
+   *
+   * A heading carrying content ("Nice to have: Docker") is kept, because the
+   * content is the whole point of reading it.
+   */
+  const isBareHeading = (line: string, heading: RegExp): boolean =>
+    line.replace(heading, ' ').replace(/[^a-z0-9+#]/gi, '').length < 3;
+
   for (const line of lines) {
     if (preferredHeading.test(line)) {
       inPreferred = true;
       // The heading line itself may carry the skill ("Nice to have: Docker").
-      preferredLines.push(line);
+      if (!isBareHeading(line, preferredHeading)) preferredLines.push(line);
       continue;
     }
     // A new requirements-style heading switches back to required.
-    if (/\b(?:requirements?|must have|we expect|your profile|qualifications?|what you bring|essential)\b/i.test(line)) {
+    if (requiredHeading.test(line)) {
       inPreferred = false;
+      if (isBareHeading(line, requiredHeading)) continue;
     }
     (inPreferred ? preferredLines : requiredLines).push(line);
   }

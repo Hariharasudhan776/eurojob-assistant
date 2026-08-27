@@ -323,7 +323,10 @@ export const TAXONOMY: TaxonomyEntry[] = [
     related: { agile: 0.4 },
   },
   {
-    canonical: 'requirements',
+    // Named 'requirements-analysis', not 'requirements'. The canonical key is
+    // itself indexed as a search needle, and a bare "requirements" matches the
+    // section heading of nearly every job advert in existence.
+    canonical: 'requirements-analysis',
     display: 'Requirements gathering & analysis',
     category: 'soft',
     aliases: ['requirement gathering', 'requirements gathering', 'requirements analysis',

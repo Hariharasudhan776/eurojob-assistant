@@ -13,40 +13,54 @@ const STAGES = [
   { value: 'withdrawn', label: 'Withdrawn' },
 ] as const;
 
-const GEN_LABELS: Record<string, { title: string; steps: string[] }> = {
+const GEN_LABELS: Record<string, { title: string; steps: string[]; hint: string }> = {
   explain: {
     title: 'Analysing the match…',
     steps: ['Reading the posting', 'Comparing it to your profile', 'Writing the verdict'],
+    hint: 'This usually takes 10–30 seconds.',
   },
   cover_letter: {
     title: 'Writing your cover letter…',
     steps: ['Studying the role', 'Pulling your relevant evidence', 'Drafting the letter', 'Checking every claim'],
+    hint: 'This usually takes 30–90 seconds.',
   },
   resume: {
+    // The honest number: on Claude this stage thinks hard and was measured at
+    // ~3 minutes on a real job (Gemini finishes in well under one). Promising
+    // 10–20 seconds made a normal run look like a hang.
     title: 'Tailoring your resume…',
     steps: ['Matching your skills to the job', 'Re-ordering your experience', 'Rewriting the summary', 'Verifying nothing is invented'],
+    hint: 'This is the thorough one — it can take up to 5 minutes.',
   },
 };
 
 /** Full-screen overlay shown while a generation runs, so a slow call is never a dead button. */
 function LoadingOverlay({ kind }: { kind: string }) {
-  const info = GEN_LABELS[kind] ?? { title: 'Working…', steps: ['Working'] };
+  const info = GEN_LABELS[kind] ?? { title: 'Working…', steps: ['Working'], hint: '' };
   const [step, setStep] = useState(0);
+  // A visible clock, because a multi-minute wait behind a static spinner reads
+  // as a hang. Seconds ticking up is proof the page is still alive.
+  const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setStep((s) => (s + 1) % info.steps.length), 1400);
     return () => clearInterval(t);
   }, [info.steps.length]);
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const clock = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="glass animate-rise mx-4 w-full max-w-sm rounded-2xl p-8 text-center">
         <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-white/10" style={{ borderTopColor: '#a06bff', borderRightColor: '#ec4899' }} />
         <h3 className="font-display mt-5 text-lg font-extrabold">{info.title}</h3>
-        <p className="mt-2 h-5 text-sm text-[var(--color-muted)] transition-all">{info.steps[step]}…</p>
+        <p className="mt-2 h-5 text-sm text-[var(--color-muted)] transition-all">{info.steps[step]}… <span className="tabular-nums">{clock}</span></p>
         <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
           <div className="h-full w-1/2 animate-[rise_1.2s_ease-in-out_infinite] rounded-full" style={{ backgroundImage: 'var(--grad-brand)' }} />
         </div>
-        <p className="mt-4 text-[11px] text-[var(--color-muted)]">This usually takes 10–20 seconds. Please keep this tab open.</p>
+        <p className="mt-4 text-[11px] text-[var(--color-muted)]">{info.hint} Please keep this tab open.</p>
       </div>
     </div>
   );

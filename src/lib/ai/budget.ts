@@ -51,17 +51,22 @@ export interface Ledger {
 }
 
 export const DEFAULT_LIMITS: BudgetLimits = {
-  perRunUsd: Number(process.env.AI_MAX_RUN_USD ?? 0.5),
+  // 0.75 rather than 0.5 because assertCanSpend adds the PROJECTED cost of the
+  // next call to the run total, and the resume stage's 32k output headroom
+  // projects to ~$0.51 on Sonnet -- a fresh run must be able to admit one such
+  // call. Actual accumulated spend per run stays far lower (~$0.16 measured).
+  perRunUsd: Number(process.env.AI_MAX_RUN_USD ?? 0.75),
   dailyUsd: Number(process.env.AI_MAX_DAILY_USD ?? 2),
   // Deliberately loose, because this one is projected from max_tokens rather
   // than measured. Its job is to catch a configuration mistake -- a 128k output
   // cap, a prompt that ballooned -- not to police normal spend. Setting it to a
-  // typical cost blocked legitimate work: the resume stage needs 16k of output
-  // headroom and so projects to about $0.25, against a MEASURED $0.157.
+  // typical cost blocked legitimate work: the resume stage needs 32k of output
+  // headroom (thinking tokens share the budget, and the output scales with the
+  // profile) and so projects to about $0.51, against a MEASURED $0.157.
   //
   // Real control comes from perRunUsd and dailyUsd, which accumulate ACTUAL
   // cost, not projections.
-  perCallUsd: Number(process.env.AI_MAX_CALL_USD ?? 0.35),
+  perCallUsd: Number(process.env.AI_MAX_CALL_USD ?? 0.6),
 };
 
 export class BudgetExceededError extends Error {

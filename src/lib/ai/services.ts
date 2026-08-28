@@ -114,16 +114,20 @@ export class AiServices {
       stableContext: this.stableContext,
       prompt: resumeTailorPrompt(job, match, mirror),
       schema: TailoredResume,
-      // 16000. Both 5000 and 8192 truncated the JSON mid-object.
+      // 32000. 5000, 8192 and then 16000 all truncated the JSON mid-object as
+      // the profile grew (v6 is 53 skills / 22 bullets, and the output scales
+      // with it: reordered bullets for every role plus a provenance entry per
+      // rewrite). Adaptive thinking tokens count against this same budget,
+      // which is the part that caught me out.
       //
-      // The output is genuinely large -- reordered bullets for every role plus a
-      // provenance entry per rewrite -- and adaptive thinking tokens count
-      // against this same budget, which is the part that caught me out.
-      //
-      // Measured cost of this stage is $0.157 per job on Sonnet 5 -- by far the
-      // most expensive stage, and the reason it is generated on demand rather
-      // than for every job that clears the score threshold.
-      maxTokens: 16000,
+      // The cap only bounds the worst case -- the model stops when the JSON is
+      // done, so a bigger cap does not make typical calls cost more. Measured
+      // cost of this stage is $0.157 per job on Sonnet 5 -- by far the most
+      // expensive stage, and the reason it is generated on demand rather than
+      // for every job that clears the score threshold. Note the per-call budget
+      // projection (AI_MAX_CALL_USD) is computed FROM maxTokens, so this value
+      // and that cap move together.
+      maxTokens: 32000,
       effort: 'high',
     });
 

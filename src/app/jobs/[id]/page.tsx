@@ -12,6 +12,7 @@ import { CompensationCard } from '@/components/CompensationCard';
 import { htmlToText } from '@/lib/jobs/parse';
 import { BackButton } from '@/components/BackButton';
 import { extractSalary, formatSalary, formatSalaryUsd, sponsorshipEvidence, toUsd } from '@/lib/jobs/compensation';
+import { suggestQuote } from '@/lib/jobs/quote';
 import { buildMirrorPlan } from '@/lib/resume/mirror';
 import { scoreJob } from '@/lib/match/score';
 import { jobRowToNormalised } from '@/lib/jobs/from-row';
@@ -84,6 +85,19 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
   // carry their salary only in prose, where no structured field ever saw it.
   const salary = extractSalary(job.description ?? '');
   const sponsorship = sponsorshipEvidence(job.description ?? '');
+
+  // What this candidate could put in the salary-expectation box, in the job's
+  // own currency. Per profile (it depends on their years), so no profile means
+  // no quote rather than a generic one.
+  const quote = profile
+    ? suggestQuote({
+        country: job.country,
+        description: job.description ?? '',
+        structured: { min: job.salary_min, max: job.salary_max, currency: job.salary_currency },
+        extracted: salary,
+        candidateYears: profile.data.totalYears,
+      })
+    : null;
 
   /**
    * Pay for the header, in US dollars.
@@ -286,6 +300,7 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
         structured={{ min: job.salary_min, max: job.salary_max, currency: job.salary_currency }}
         sponsorship={sponsorship}
         verdict={job.visa_sponsorship}
+        quote={quote}
       />
 
       {ats && <AtsCard report={ats} />}

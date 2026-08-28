@@ -1,5 +1,7 @@
 import type { SalaryFinding, SponsorshipFinding } from '@/lib/jobs/compensation';
 import { formatSalary, formatSalaryUsd, USD_RATES_AS_OF } from '@/lib/jobs/compensation';
+import type { SalaryQuote } from '@/lib/jobs/quote';
+import { formatQuote } from '@/lib/jobs/quote';
 
 /**
  * Pay and sponsorship, with the posting's own words underneath.
@@ -25,14 +27,17 @@ export function CompensationCard({
   structured,
   sponsorship,
   verdict,
+  quote,
 }: {
   salary: SalaryFinding | null;
   structured: { min: number | null; max: number | null; currency: string | null } | null;
   sponsorship: SponsorshipFinding;
   verdict: string;
+  /** What the reader could put in the salary-expectation box. lib/jobs/quote.ts */
+  quote: SalaryQuote | null;
 }) {
   const hasStructured = Boolean(structured && (structured.min || structured.max));
-  if (!salary && !hasStructured && !sponsorship.quotes.length) return null;
+  if (!salary && !hasStructured && !sponsorship.quotes.length && !quote) return null;
 
   const sponsorTone =
     verdict === 'yes'
@@ -77,6 +82,27 @@ export function CompensationCard({
               The job board also reports {formatStructured(structured!)}.
             </p>
           )}
+        </div>
+      )}
+
+      {quote && (
+        <div className="mt-4 rounded-xl border border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 p-3">
+          <p className="text-xs font-semibold text-[var(--color-accent)]">
+            What you could quote — in the posting&apos;s own currency
+          </p>
+          {/* Accent, not green: green on this card means "the posting said so",
+              and this figure is OUR arithmetic, not their words. */}
+          <p className="tnum mt-1 text-xl font-bold text-[var(--color-accent)]">{formatQuote(quote)}</p>
+          <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+            {quote.basis === 'posting'
+              ? `Positioned inside the band this posting itself states${
+                  quote.requiredYears !== null ? `, against its ${quote.requiredYears}+ year ask` : ''
+                }.`
+              : `Typical ${quote.level}-level market band for this country (as of ${quote.asOf})${
+                  quote.requiredYears !== null ? `; the posting asks for ${quote.requiredYears}+ years` : ''
+                }.`}{' '}
+            An anchor for the expectation box, not a promise — gross per year.
+          </p>
         </div>
       )}
 

@@ -153,11 +153,66 @@ export function extractRequirements(job: NormalisedJob): { required: string[]; p
   const required = extractSkills(requiredLines.join('\n'));
   const preferredOnly = extractSkills(preferredLines.join('\n')).filter((s) => !required.includes(s));
 
-  // A posting mentioning the title's technology in passing still requires it.
-  for (const fromTitle of extractSkills(job.title)) {
-    if (!required.includes(fromTitle)) required.push(fromTitle);
+  /**
+   * A posting mentioning a technology in its title usually requires it — unless
+   * the title says otherwise, which titles routinely do.
+   *
+   * "DBA Expert PostgreSQL production (apprécié Oracle/SQL Server/Mongo Db)"
+   * marks three technologies as *apprécié* — appreciated, a plus — and every one
+   * of them was being counted as a hard requirement. The candidate holds Oracle
+   * and PostgreSQL outright, and still scored 4 of 7 on "required" skills,
+   * because two of the three he supposedly lacked were the posting's own
+   * nice-to-haves. Technical fit came out at 55 for a job that is close to a
+   * bullseye.
+   *
+   * Titles carry this in brackets, so the title is read bracket by bracket and a
+   * segment that announces a preference contributes preferred skills instead of
+   * required ones. The main segment still yields requirements: "DBA Expert
+   * PostgreSQL" means PostgreSQL, and that has not changed.
+   */
+  const preferred = new Set(preferredOnly);
+
+  for (const segment of titleSegments(job.title)) {
+    const optional = PREFERENCE_MARKER.test(segment);
+    for (const skill of extractSkills(segment)) {
+      if (required.includes(skill)) continue;
+      if (optional) preferred.add(skill);
+      else {
+        required.push(skill);
+        preferred.delete(skill);
+      }
+    }
   }
-  return { required, preferred: preferredOnly };
+
+  return { required, preferred: [...preferred].filter((s) => !required.includes(s)) };
+}
+
+/**
+ * Words a title uses to mark a technology as desirable rather than demanded.
+ *
+ * Multilingual because the feed is: `apprécié` (French), `wünschenswert` and
+ * `von Vorteil` (German), `gewenst` (Dutch). A missing translation costs a
+ * false requirement, which is the failure this exists to prevent.
+ */
+/**
+ * Boundaries are Unicode-aware, and that is not a detail.
+ *
+ * `\b` in JavaScript is defined against `[A-Za-z0-9_]`, so an accented letter is
+ * a NON-word character to it. "apprécié" therefore ends in a non-word character,
+ * a trailing `\b` finds no word/non-word transition, and the pattern silently
+ * fails to match the exact word it was written for. Every French and German
+ * marker here ends or contains an accent, so an ASCII `\b` would have made this
+ * whole list decorative.
+ */
+const PREFERENCE_MARKER =
+  /(?:^|[^\p{L}])(?:preferred|preferable|appreciated|appr[ée]ci[ée]s?|a\s+plus|nice[- ]to[- ]have|desirable|optional|bonus|ideally|souhait[ée]s?|w[üu]nschenswert|von\s+vorteil|gewenst)(?![\p{L}])/iu;
+
+/** A title split into its bracketed parts, brackets kept so the marker is seen. */
+function titleSegments(title: string): string[] {
+  return title
+    .split(/[()\[\]]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 function judge(requirement: string, skills: Skill[], surface: string[] = []): SkillVerdict {

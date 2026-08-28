@@ -438,3 +438,41 @@ test('ordinary roles are not caught by the student filter', () => {
   );
   assert.ok(!degree.blockers.some((b) => /student, trainee or apprentice/i.test(b)));
 });
+
+test('a title marking a technology as preferred does not make it required', () => {
+  // Real posting: "DBA Expert PostgreSQL production (apprécié Oracle/SQL
+  // Server/Mongo Db)". All three bracketed technologies were counted as hard
+  // requirements, so a candidate holding Oracle and PostgreSQL outright scored
+  // 4 of 7 on "required" skills -- two of the three he supposedly lacked being
+  // the posting's own nice-to-haves.
+  const r = extractRequirements({
+    title: 'DBA Expert PostgreSQL production informatique ( apprécié Oracle/SQL Server/Mongo Db) (IT)',
+    description: 'Senior PostgreSQL DBA for critical production environments.',
+  } as never);
+
+  assert.ok(r.required.includes('postgresql'), 'the main title segment still yields requirements');
+  for (const optional of ['mongodb', 'sql-server']) {
+    assert.ok(!r.required.includes(optional), `${optional} was counted as required`);
+    assert.ok(r.preferred.includes(optional), `${optional} should be preferred`);
+  }
+});
+
+test('preference markers survive their own accents', () => {
+  // `\b` in JavaScript is defined against [A-Za-z0-9_], so an accented letter is
+  // a NON-word character to it: "apprécié" ends in one, a trailing \b finds no
+  // transition, and the pattern silently fails on the exact word it was written
+  // for. Every French and German marker here carries an accent.
+  for (const title of [
+    'Data Engineer (apprécié Python)',
+    'Datenbank-Entwickler (Oracle wünschenswert)',
+    'Developer (MongoDB preferred)',
+    'Engineer (Kubernetes nice-to-have)',
+  ]) {
+    const r = extractRequirements({ title, description: 'SQL work.' } as never);
+    assert.equal(r.required.length <= 1, true, `bracketed optional treated as required in: ${title}`);
+  }
+
+  // And a title with no marker still contributes requirements as before.
+  const plain = extractRequirements({ title: 'Oracle Database Administrator', description: 'SQL.' } as never);
+  assert.ok(plain.required.includes('oracle-dba'));
+});

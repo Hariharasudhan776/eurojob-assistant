@@ -35,6 +35,7 @@ export default async function JobsPage({
     sponsorshipOnly: one('sponsorship') === '1',
     role: one('role') || undefined,
     search: one('q') || undefined,
+    includeActioned: one('actioned') === '1',
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   };
@@ -122,6 +123,12 @@ export default async function JobsPage({
           <label className="flex items-center gap-2 pb-2 text-xs font-semibold text-[var(--color-muted)]">
             <input type="checkbox" name="sponsorship" value="1" defaultChecked={one('sponsorship') === '1'} className="accent-[var(--color-accent)]" />
             Sponsorship stated
+          </label>
+          {/* Applied/rejected jobs move to the Applications tracker; this brings
+              them back into the list for the rare "what did that one say again". */}
+          <label className="flex items-center gap-2 pb-2 text-xs font-semibold text-[var(--color-muted)]">
+            <input type="checkbox" name="actioned" value="1" defaultChecked={one('actioned') === '1'} className="accent-[var(--color-accent)]" />
+            Show applied &amp; closed
           </label>
           <GradientButton>Apply filters</GradientButton>
           <Link href="/jobs" className="pb-2 text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-fg)]">clear</Link>

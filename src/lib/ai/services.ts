@@ -16,6 +16,14 @@ import {
 import { verifyClaims, verifyProvenance, type Violation } from './verify.ts';
 import { buildMirrorPlan } from '../resume/mirror.ts';
 import { PROFILE_DRAFT_SYSTEM, ProfileDraft, profileDraftPrompt } from '../resume/draft.ts';
+import {
+  EVIDENCE_SYSTEM,
+  EvidenceDraft,
+  evidencePrompt,
+  findExperience,
+  groundEvidence,
+  templateEvidence,
+} from '../resume/evidence.ts';
 
 /**
  * The AI services, one per pipeline stage (spec §18).
@@ -217,6 +225,55 @@ export class AiServices {
       maxTokens: 16000,
       effort: 'medium',
     });
+  }
+
+  /**
+   * Phrase the candidate's own fact as one resume evidence line.
+   *
+   * The model is a typist here, never a witness: the fact, the employer and the
+   * dates all come from the candidate, and `groundEvidence` rejects any output
+   * that smuggles in a specific they did not state. A rejected draft falls back
+   * to the mechanical template rather than a retry -- a model that invented a
+   * number once is not the tool to ask again, and the template cannot lie.
+   */
+  async draftSkillEvidence(input: { term: string; company: string; fact: string }): Promise<{
+    evidence: string;
+    /** False when the AI draft failed grounding and the template was used. */
+    aiWritten: boolean;
+  }> {
+    const role = findExperience(this.profile.experience, input.company);
+    if (!role) throw new Error(`"${input.company}" is not an employer in your profile.`);
+
+    const base = {
+      term: input.term,
+      company: role.company,
+      title: role.title,
+      startDate: role.startDate,
+      endDate: role.endDate,
+      fact: input.fact,
+    };
+
+    const output = await this.ai.complete({
+      kind: 'skill-evidence',
+      cacheKey: hashKey('evidence-v1', input.term, role.company, input.fact),
+      system: EVIDENCE_SYSTEM,
+      // No stableContext on purpose: the profile is deliberately NOT given to the
+      // model, so it cannot borrow specifics from other roles to pad this one.
+      stableContext: '',
+      prompt: evidencePrompt(base),
+      schema: EvidenceDraft,
+      maxTokens: 1024,
+      effort: 'low',
+    });
+
+    const problems = groundEvidence(output.evidence, {
+      ...base,
+      allowedText: [role.startDate, role.endDate ?? '', role.title],
+    });
+    if (problems.length) {
+      return { evidence: templateEvidence(base), aiWritten: false };
+    }
+    return { evidence: output.evidence, aiWritten: true };
   }
 
   async writeCoverLetter(job: NormalisedJob, match: MatchResult, tone: Tone): Promise<Verified<CoverLetter>> {

@@ -25,19 +25,28 @@ import type { MirrorEntry } from '@/lib/resume/mirror';
  *   gaps      nothing behind it. No box to fill, because there is nothing
  *             honest to write. These are a study list.
  *
- * The evidence box is a plain textarea and its contents are stored verbatim.
- * Nothing on this screen generates text on the candidate's behalf: the whole
- * point is that the sentence backing a skill is theirs, so they can defend it.
+ * The confirm flow splits the work: the candidate picks the employer and states
+ * the bare fact, and the model may phrase that as one clean sentence. The FACTS
+ * are always the candidate's -- the model is a typist, checked in code
+ * (lib/resume/evidence.ts) so it cannot add a number or a scenario they did not
+ * state -- and the sentence stays editable right up until it is saved.
  */
+
+export interface EmployerOption {
+  company: string;
+  title: string;
+}
 
 export function KeywordGaps({
   mirrored,
   confirm,
   gaps,
+  employers,
 }: {
   mirrored: MirrorEntry[];
   confirm: MirrorEntry[];
   gaps: MirrorEntry[];
+  employers: EmployerOption[];
 }) {
   if (!mirrored.length && !confirm.length && !gaps.length) return null;
 
@@ -81,7 +90,7 @@ export function KeywordGaps({
           </p>
           <div className="mt-3 space-y-3">
             {confirm.map((entry) => (
-              <ConfirmRow key={entry.requirement} entry={entry} />
+              <ConfirmRow key={entry.requirement} entry={entry} employers={employers} />
             ))}
           </div>
         </div>
@@ -114,16 +123,39 @@ export function KeywordGaps({
 
 const LEVELS = ['familiar', 'working', 'strong', 'expert'] as const;
 
-function ConfirmRow({ entry }: { entry: MirrorEntry }) {
+const field =
+  'w-full rounded-lg border border-white/12 bg-[#1b1430] p-2 text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)]';
+
+function ConfirmRow({ entry, employers }: { entry: MirrorEntry; employers: EmployerOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [company, setCompany] = useState(employers[0]?.company ?? '');
+  const [fact, setFact] = useState('');
   const [evidence, setEvidence] = useState('');
   const [level, setLevel] = useState<(typeof LEVELS)[number]>('working');
+  const [drafting, setDrafting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const term = entry.surface[0] ?? entry.display;
+
+  async function draft() {
+    setDrafting(true);
+    setError(null);
+    const res = await fetch('/api/skills/draft-evidence', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ term, company, fact }),
+    });
+    const body = (await readJson(res)) as { error?: string; evidence?: string };
+    setDrafting(false);
+    if (!res.ok || !body.evidence) {
+      setError(body.error ?? 'Could not draft the sentence.');
+      return;
+    }
+    setEvidence(body.evidence);
+  }
 
   async function submit() {
     setBusy(true);
@@ -180,17 +212,50 @@ function ConfirmRow({ entry }: { entry: MirrorEntry }) {
 
       {open && (
         <div className="mt-3 space-y-2">
-          <label className="block text-xs text-[var(--color-muted)]">
-            Where did you use it? Employer, system, roughly when. This is what an interviewer will
-            ask you about, so write what you can defend.
-          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block text-xs text-[var(--color-muted)]">
+              Where?
+              <select value={company} onChange={(e) => setCompany(e.target.value)} className={`${field} mt-1`}>
+                {employers.map((e) => (
+                  <option key={e.company} value={e.company}>
+                    {e.company} — {e.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs text-[var(--color-muted)]">
+              What did you do with it? A few words is enough.
+              <input
+                value={fact}
+                onChange={(e) => setFact(e.target.value)}
+                placeholder="e.g. nightly backups of the production database"
+                className={`${field} mt-1`}
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={drafting || fact.trim().length < 10 || !company}
+              onClick={draft}
+              className="rounded-lg border border-white/12 px-3 py-1.5 text-xs font-semibold hover:bg-white/5 disabled:opacity-40"
+            >
+              {drafting ? 'Writing…' : 'Write the sentence for me'}
+            </button>
+            <span className="text-[11px] text-[var(--color-muted)]">
+              Only your own facts are used — nothing is invented. You can edit the result.
+            </span>
+          </div>
+
           <textarea
             value={evidence}
             onChange={(e) => setEvidence(e.target.value)}
             rows={3}
-            placeholder={`e.g. Northwind: ran ${term} for the nightly backups of the production Oracle database, 2024-2026.`}
-            className="w-full rounded-lg border border-white/12 bg-black/20 p-2 text-xs"
+            placeholder={`Or write it yourself, e.g. Northwind: used ${term} for the nightly backups of the production Oracle database, 2024–2026.`}
+            className={field}
           />
+
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-[var(--color-muted)]">How well?</span>
             {LEVELS.map((value) => (

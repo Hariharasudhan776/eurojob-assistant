@@ -289,8 +289,13 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
       />
 
       {ats && <AtsCard report={ats} />}
-      {mirror && (
-        <KeywordGaps mirrored={mirror.mirror} confirm={mirror.confirm} gaps={mirror.gaps} />
+      {mirror && profile && (
+        <KeywordGaps
+          mirrored={mirror.mirror}
+          confirm={mirror.confirm}
+          gaps={mirror.gaps}
+          employers={profile.data.experience.map((e) => ({ company: e.company, title: e.title }))}
+        />
       )}
 
       <JobActions jobId={job.id} currentStage={job.stage} notes={job.notes} />

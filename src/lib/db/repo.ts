@@ -596,9 +596,24 @@ export interface JobFilters {
   role?: string;
   search?: string;
   stage?: string;
+  /**
+   * Show jobs the caller has already acted on. Off by default: once an
+   * application is sent (or closed), the job's home is the Applications
+   * tracker, and leaving it in the discovery list means re-reading postings
+   * that are already decided. Filtering by an explicit `stage` implies it.
+   */
+  includeActioned?: boolean;
   limit?: number;
   offset?: number;
 }
+
+/**
+ * Stages after which a job leaves the discovery surfaces (jobs list, top
+ * matches). Pre-application stages -- new, shortlisted, resume_ready -- keep the
+ * job visible: the person is still deciding.
+ */
+export const ACTIONED_STAGES = ['applied', 'interview', 'offer', 'rejected', 'withdrawn'] as const;
+const ACTIONED_SQL = ACTIONED_STAGES.map((s) => `'${s}'`).join(', ');
 
 /**
  * The main listing query.
@@ -627,6 +642,10 @@ export async function listJobs(userId: number, filters: JobFilters = {}): Promis
   if (filters.role) add('j.role_category = $?', filters.role);
   if (filters.stage) add('a.stage = $?', filters.stage);
   if (filters.search) add('(j.title ILIKE $? OR j.company ILIKE $?)'.replace('$?', `$${params.length + 1}`), `%${filters.search}%`);
+  // Applied, rejected and the stages beyond them live in the tracker, not here.
+  if (!filters.stage && !filters.includeActioned) {
+    where.push(`(a.stage IS NULL OR a.stage NOT IN (${ACTIONED_SQL}))`);
+  }
 
   const clause = `WHERE ${where.join(' AND ')}`;
   const limit = Math.min(filters.limit ?? 50, 200);
@@ -726,6 +745,65 @@ export async function listApplications(userId: number) {
   return rows;
 }
 
+/**
+ * The agent's output channel. One row per (user, job), written when a job first
+ * becomes a top match for that person, so a notification can never repeat --
+ * the NOT EXISTS on notifications is the dedup, not a timestamp comparison,
+ * which would re-notify after any re-score.
+ *
+ * Jobs the person has already acted on are excluded for the same reason they
+ * left the jobs list: there is no news in a posting whose outcome is decided.
+ */
+export async function notifyNewTopMatches(userId: number): Promise<{ job_id: number; title: string }[]> {
+  const { rows } = await getPool().query(
+    `INSERT INTO notifications (user_id, job_id, title, body)
+     SELECT $1, j.id,
+            'New top match: ' || j.title || ' — ' || j.company,
+            m.overall || '% match · ' || coalesce(j.country, 'location not stated')
+              || CASE WHEN j.visa_sponsorship = 'yes' THEN ' · sponsorship stated' ELSE '' END
+       FROM matches m
+       JOIN jobs j ON j.id = m.job_id
+      WHERE m.profile_id = ${MY_PROFILE}
+        AND j.duplicate_of IS NULL
+        AND m.recommendation = 'highly_recommended'
+        AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = $1 AND n.job_id = j.id)
+        AND NOT EXISTS (SELECT 1 FROM applications a
+                         WHERE a.user_id = $1 AND a.job_id = j.id
+                           AND a.stage IN (${ACTIONED_SQL}))
+     RETURNING job_id, title`,
+    [userId]
+  );
+  return rows as { job_id: number; title: string }[];
+}
+
+export interface NotificationRow {
+  id: number;
+  job_id: number | null;
+  title: string;
+  body: string;
+  created_at: string;
+}
+
+export async function unreadNotifications(userId: number, limit = 20): Promise<NotificationRow[]> {
+  const { rows } = await getPool().query(
+    `SELECT id, job_id, title, body, created_at
+       FROM notifications
+      WHERE user_id = $1 AND read_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [userId, limit]
+  );
+  return rows as NotificationRow[];
+}
+
+export async function markNotificationsRead(userId: number): Promise<number> {
+  const { rowCount } = await getPool().query(
+    'UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL',
+    [userId]
+  );
+  return rowCount ?? 0;
+}
+
 export interface DashboardStats {
   total_jobs: number;
   new_jobs: number;
@@ -756,7 +834,12 @@ export async function dashboardStats(userId: number): Promise<DashboardStats> {
         (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NULL AND collected_at > now() - interval '24 hours') AS new_jobs,
         (SELECT count(*)::int FROM matches m JOIN jobs j ON j.id = m.job_id
           WHERE j.duplicate_of IS NULL AND m.profile_id = ${MY_PROFILE}
-            AND m.recommendation = 'highly_recommended') AS highly_matched,
+            AND m.recommendation = 'highly_recommended'
+            -- Counts what the "Top matches" link will actually show: a job
+            -- already applied to (or closed) has left the discovery list.
+            AND NOT EXISTS (SELECT 1 FROM applications a
+                             WHERE a.user_id = $1 AND a.job_id = j.id
+                               AND a.stage IN (${ACTIONED_SQL}))) AS highly_matched,
         (SELECT count(*)::int FROM matches WHERE profile_id = ${MY_PROFILE}) AS scored,
         (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NOT NULL) AS duplicates,
         (SELECT count(*)::int FROM jobs WHERE visa_sponsorship = 'yes') AS sponsoring,

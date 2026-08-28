@@ -1,0 +1,31 @@
+# The autonomous agent, in the cloud — so the feed refreshes even when no
+# personal machine is on. Collect + re-score every user + in-app notifications
+# for new top matches. Uses NO AI and costs nothing (Adzuna/Arbeitnow/Muse are
+# free APIs, scoring is arithmetic, and this private repo has free Actions
+# minutes well beyond a daily 5-minute run).
+#
+# Secrets (Settings → Secrets → Actions): DATABASE_URL (pooled Neon string),
+# ADZUNA_APP_ID, ADZUNA_APP_KEY. Never in this file.
+name: agent
+on:
+  schedule:
+    # 03:00 UTC = 07:00 in Oman, matching the old Task Scheduler run. The PC
+    # task still exists as a fallback; both runs are idempotent (jobs upsert,
+    # notifications dedup forever), so an overlap only wastes a few requests.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci
+      - run: npm run agent
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}

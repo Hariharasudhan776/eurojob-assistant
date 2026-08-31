@@ -5,6 +5,7 @@ import { ArbeitnowSource } from './sources/arbeitnow.ts';
 import { AdzunaSource } from './sources/adzuna.ts';
 import { TheMuseSource } from './sources/themuse.ts';
 import { JobicySource } from './sources/jobicy.ts';
+import { AtsSource } from './sources/ats.ts';
 
 /**
  * Source registry. Adding a source means adding one line here (spec §5) --
@@ -18,12 +19,16 @@ import { JobicySource } from './sources/jobicy.ts';
  * Jobicy: no key, full descriptions, worldwide REMOTE roles -- the one category
  * for which the employer's country is not a visa problem, and the only coverage
  * the other three give of the Gulf and the Nordics.
+ * ATS: no key, full descriptions, the EMPLOYERS' OWN boards (Greenhouse, Lever,
+ * Ashby, SmartRecruiters). Upstream of every aggregator here, and the only
+ * source where a vacancy disappearing is real evidence that it closed.
  */
 export const SOURCES: JobSource[] = [
   new ArbeitnowSource(),
   new AdzunaSource(),
   new TheMuseSource(),
   new JobicySource(),
+  new AtsSource(),
 ];
 
 export interface CollectionReport {

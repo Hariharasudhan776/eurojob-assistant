@@ -5,6 +5,7 @@ import { STALE_AFTER_DAYS, staleClause, closedLabel } from '../src/lib/jobs/life
 import { geoCountry } from '../src/lib/jobs/sources/jobicy.ts';
 import { parseLocation } from '../src/lib/jobs/parse.ts';
 import { DEFAULT_SEARCH, DEFAULT_TARGET_COUNTRIES } from '../src/lib/search-config.ts';
+import { ATS_BOARDS } from '../src/lib/jobs/sources/ats-boards.ts';
 
 // --- the closure rule --------------------------------------------------------
 
@@ -96,4 +97,31 @@ test('priority countries are a scoring preference reused, not a second list to m
 
 test('collection is still global -- priority countries must not restrict it', () => {
   assert.deepEqual(DEFAULT_SEARCH.countries, []);
+});
+
+// --- the curated company boards ---------------------------------------------
+
+test('every ATS board names a platform the source can actually read', () => {
+  const known = new Set(['greenhouse', 'lever', 'ashby', 'smartrecruiters']);
+  for (const board of ATS_BOARDS) {
+    assert.ok(known.has(board.platform), `${board.name}: unknown platform "${board.platform}"`);
+    assert.ok(board.slug.length > 0, `${board.name}: empty slug`);
+    assert.ok(board.name.length > 0, `${board.slug}: empty name`);
+  }
+});
+
+test('no board is listed twice — a duplicate silently doubles a company in the feed', () => {
+  const seen = new Set<string>();
+  for (const board of ATS_BOARDS) {
+    const key = `${board.platform}:${board.slug}`;
+    assert.ok(!seen.has(key), `${key} appears more than once`);
+    seen.add(key);
+  }
+});
+
+test('no demo or placeholder board ships in the list', () => {
+  // `leverdemo` answers with 384 fake postings and was caught during probing.
+  for (const board of ATS_BOARDS) {
+    assert.ok(!/demo|test|example|sandbox/i.test(board.slug), `${board.slug} looks like a placeholder board`);
+  }
 });

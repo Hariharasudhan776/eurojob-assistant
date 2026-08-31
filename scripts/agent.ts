@@ -28,7 +28,7 @@ import { contentHash } from '../src/lib/jobs/parse.ts';
 import { scoreJob } from '../src/lib/match/score.ts';
 import { getPool } from '../src/lib/db/pool.ts';
 import {
-  ensureSources, latestProfile, linkDuplicates, notifyNewTopMatches,
+  ensureSources, latestProfile, linkDuplicates, notifyNewTopMatches, sweepClosedJobs,
   recordSourceRun, saveMatches, upsertJob, usersWithProfiles,
 } from '../src/lib/db/repo.ts';
 import { targetCountriesFor } from '../src/lib/match/rescore.ts';
@@ -76,7 +76,11 @@ async function main() {
     storedIds.push(await upsertJob(job, contentHash(job)));
   }
   const linked = await linkDuplicates();
-  console.log(`${storedIds.length} jobs stored, ${linked} marked as duplicates\n`);
+  // AFTER the upsert, never before: a posting this run returned has just had
+  // its last_seen_at refreshed, so the sweep cannot close something it just saw.
+  const { closed, reopened } = await sweepClosedJobs();
+  console.log(`${storedIds.length} jobs stored, ${linked} marked as duplicates`);
+  console.log(`${closed} closed as expired, ${reopened} reopened\n`);
 
   // --- score and notify, per user ------------------------------------------
   const byId = new Map(storedIds.map((id, index) => [id, jobs[index]!]));

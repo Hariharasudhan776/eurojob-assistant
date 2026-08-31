@@ -74,10 +74,13 @@ export function JobActions({
   jobId,
   currentStage,
   notes,
+  closedReason,
 }: {
   jobId: number;
   currentStage: string | null;
   notes: string | null;
+  /** null when the posting is still open. */
+  closedReason: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -124,6 +127,34 @@ export function JobActions({
           ? '$0 (served from cache)'
           : `$${(body.costUsd ?? 0).toFixed(4)}`;
       setMessage(`Done — ${cost}.${body.violations?.length ? ` ${body.violations.length} verification note(s).` : ' Verified clean.'}`);
+      startTransition(() => router.refresh());
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'failed');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Report the posting gone, or take the report back.
+   *
+   * This is the app's only certain closure signal: no source it reads exposes a
+   * usable one, so the person who followed the link is the sensor. It closes the
+   * job for every account, because job rows are shared -- one person finding a
+   * dead posting spares everyone else the click.
+   */
+  async function reportGone(gone: boolean) {
+    setBusy('gone');
+    setMessage(null);
+    try {
+      const res = await fetch('/api/jobs/closed', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jobId, gone }),
+      });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(body.error ?? 'failed');
+      setMessage(gone ? 'Marked as no longer available. It will drop out of the list.' : 'Back in the list.');
       startTransition(() => router.refresh());
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'failed');
@@ -193,6 +224,23 @@ export function JobActions({
           className="mt-1 w-full rounded-xl border border-white/10 bg-[#1b1430] px-3 py-2 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)]"
         />
       </label>
+
+      {/* The one closure signal with certainty behind it. Reversible from the
+          same control, because a misclick must not cost anyone a job. */}
+      <div className="mt-4 border-t border-white/8 pt-3">
+        {closedReason === 'reported' ? (
+          <button onClick={() => reportGone(false)} disabled={disabled} className="text-xs font-semibold text-[var(--color-muted)] underline-offset-2 hover:text-[var(--color-fg)] hover:underline disabled:opacity-40">
+            {busy === 'gone' ? 'restoring…' : 'Actually, it is still open — put it back'}
+          </button>
+        ) : (
+          <button onClick={() => reportGone(true)} disabled={disabled} className="text-xs font-semibold text-[var(--color-muted)] underline-offset-2 hover:text-[var(--color-fg)] hover:underline disabled:opacity-40">
+            {busy === 'gone' ? 'marking…' : 'This posting is no longer available'}
+          </button>
+        )}
+        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+          Hides it for everyone. Nothing is deleted — “Show expired” on the Jobs page brings it back.
+        </p>
+      </div>
 
       {message && <p className="mt-3 text-sm font-semibold text-[var(--color-accent)]">{message}</p>}
     </section>

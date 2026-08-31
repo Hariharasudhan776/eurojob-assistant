@@ -3,6 +3,9 @@ import type { NormalisedJob } from '../jobs/types.ts';
 import type { MatchResult } from '../match/score.ts';
 import { classifyRole } from '../match/roles.ts';
 import { extractSkills } from '../match/taxonomy.ts';
+import { staleClause } from '../jobs/lifecycle.ts';
+import { parseLocation } from '../jobs/parse.ts';
+import { geoCountry } from '../jobs/sources/jobicy.ts';
 import type { CandidateProfile } from '../resume/profile.ts';
 
 /**
@@ -54,6 +57,12 @@ export interface JobRow {
   relocation_support: string;
   posted_at: string | null;
   collected_at: string;
+  /** When a source last returned this posting. See src/lib/jobs/lifecycle.ts. */
+  last_seen_at: string | null;
+  /** NULL means open. Set, never deleted. */
+  closed_at: string | null;
+  /** 'expired' (date rule, self-reversing) or 'reported' (a human looked). */
+  closed_reason: string | null;
 }
 
 export interface MatchRow {
@@ -360,9 +369,24 @@ export async function upsertJob(job: NormalisedJob, contentHash: string): Promis
           THEN EXCLUDED.description ELSE jobs.description END,
         description_complete = jobs.description_complete OR EXCLUDED.description_complete,
         languages = EXCLUDED.languages,
+        -- COALESCE and not EXCLUDED: an improvement to the location parser
+        -- should reach rows already stored, but a source that returns a job
+        -- with no location this time must never erase the one it gave last
+        -- time. Filling in is safe; overwriting with NULL is data loss.
+        country = COALESCE(EXCLUDED.country, jobs.country),
+        city = COALESCE(EXCLUDED.city, jobs.city),
         visa_sponsorship = EXCLUDED.visa_sponsorship,
         relocation_support = EXCLUDED.relocation_support,
-        collected_at = now()
+        collected_at = now(),
+        -- A source returning the posting is the strongest evidence available
+        -- that it is still open, so record the sighting...
+        last_seen_at = now(),
+        -- ...and let it overturn an expiry, which is only ever a date rule.
+        -- A 'reported' closure is NOT cleared: a human opened the posting and
+        -- found it gone, and a source's index being slow to catch up does not
+        -- outrank that.
+        closed_at = CASE WHEN jobs.closed_reason = 'expired' THEN NULL ELSE jobs.closed_at END,
+        closed_reason = CASE WHEN jobs.closed_reason = 'expired' THEN NULL ELSE jobs.closed_reason END
      RETURNING id`,
     [
       job.sourceSlug, job.sourceJobId, job.url, job.title, job.company, job.country, job.city, job.remote,
@@ -372,6 +396,112 @@ export async function upsertJob(job: NormalisedJob, contentHash: string): Promis
     ]
   );
   return rows[0].id as number;
+}
+
+/**
+ * Place postings whose country the parser could not read when they were stored.
+ *
+ * This exists because a fix to `parseLocation` does not reach the database on
+ * its own. Collection parses the location once, at collection time, and the
+ * upsert has no reason to revisit a field that does not change -- so 592
+ * Arbeitnow rows sat with `country = NULL` through a parser change that placed
+ * two thirds of them. They were invisible to the country filter and scored as
+ * "location unknown" against a candidate whose whole target list is countries.
+ *
+ * The same shape as `backfillRoleCategories`: read-only until it has an answer,
+ * updates nothing it cannot improve, and returns what changed. It never clears a
+ * country that is already set -- an unreadable location is left NULL, because a
+ * refused guess is the behaviour `parseLocation` is built around.
+ *
+ * The location lives in a different place in each source's payload, which is why
+ * the three are named here rather than inferred: `raw.location` (Arbeitnow, a
+ * string), `raw.jobGeo` (Jobicy, an eligibility list -- see geoCountry), and
+ * `raw.locations[].name` (The Muse, an array of place names). Adzuna states its
+ * country in the request, never in the payload, so its rows are never NULL and
+ * there is nothing here to do for them.
+ */
+export async function backfillCountries(): Promise<{ scanned: number; placed: number }> {
+  const { rows } = await getPool().query(
+    `SELECT id, source_slug, raw FROM jobs WHERE country IS NULL`
+  );
+
+  let placed = 0;
+  for (const row of rows as { id: number; source_slug: string; raw: Record<string, unknown> }[]) {
+    const raw = row.raw ?? {};
+
+    let country: string | null = null;
+    let city: string | null = null;
+
+    if (typeof raw.location === 'string') {
+      ({ country, city } = parseLocation(raw.location));
+    } else if (typeof raw.jobGeo === 'string') {
+      // Remote eligibility, so a region ("EMEA", "Anywhere") stays NULL and
+      // there is no city to record.
+      country = geoCountry(raw.jobGeo);
+    } else if (Array.isArray(raw.locations)) {
+      const named = (raw.locations as { name?: string }[])
+        .map((l) => l?.name?.trim())
+        .filter((n): n is string => Boolean(n));
+      for (const name of named) {
+        ({ country, city } = parseLocation(name));
+        if (country) break;
+      }
+    }
+
+    if (!country) continue;
+    await getPool().query('UPDATE jobs SET country = $2, city = COALESCE(city, $3) WHERE id = $1', [
+      row.id,
+      country,
+      city,
+    ]);
+    placed += 1;
+  }
+
+  return { scanned: rows.length, placed };
+}
+
+/**
+ * Close postings that nothing has listed for longer than a posting stays open,
+ * and reopen any that a sweep has since returned.
+ *
+ * Run after collection, so a job seen in this run is never closed by it. Both
+ * directions matter: the reopen half is what makes the rule safe to be wrong
+ * about, because the next sweep that returns the posting undoes the mistake by
+ * itself. Nothing is deleted -- a closed job keeps its row, its matches, its
+ * generated documents and its application history.
+ *
+ * 'reported' closures are untouched in both directions. See lifecycle.ts.
+ */
+export async function sweepClosedJobs(): Promise<{ closed: number; reopened: number }> {
+  const closed = await getPool().query(
+    `UPDATE jobs j SET closed_at = now(), closed_reason = 'expired'
+      WHERE j.closed_at IS NULL AND ${staleClause('j')}`
+  );
+  const reopened = await getPool().query(
+    `UPDATE jobs j SET closed_at = NULL, closed_reason = NULL
+      WHERE j.closed_reason = 'expired' AND NOT (${staleClause('j')})`
+  );
+  return { closed: closed.rowCount ?? 0, reopened: reopened.rowCount ?? 0 };
+}
+
+/**
+ * A human opened the posting and found it gone.
+ *
+ * The only closure signal with certainty behind it, and therefore the only one
+ * a later sweep does not overturn. Jobs are shared rows (§4), so one person
+ * reporting a dead posting spares everyone else the click -- the same reasoning
+ * that makes a collected job public data in the first place.
+ */
+export async function reportJobGone(jobId: number): Promise<void> {
+  await getPool().query(
+    `UPDATE jobs SET closed_at = now(), closed_reason = 'reported' WHERE id = $1 AND closed_at IS NULL`,
+    [jobId]
+  );
+}
+
+/** Undo a report. Nothing here is one-way. */
+export async function reopenJob(jobId: number): Promise<void> {
+  await getPool().query('UPDATE jobs SET closed_at = NULL, closed_reason = NULL WHERE id = $1', [jobId]);
 }
 
 /**
@@ -404,12 +534,12 @@ export async function facetCounts(): Promise<{
   const [roles, countries] = await Promise.all([
     getPool().query(
       `SELECT role_category AS value, count(*)::int AS count
-         FROM jobs WHERE duplicate_of IS NULL
+         FROM jobs WHERE duplicate_of IS NULL AND closed_at IS NULL
         GROUP BY role_category ORDER BY count DESC`
     ),
     getPool().query(
       `SELECT country AS value, count(*)::int AS count
-         FROM jobs WHERE duplicate_of IS NULL
+         FROM jobs WHERE duplicate_of IS NULL AND closed_at IS NULL
         GROUP BY country ORDER BY count DESC`
     ),
   ]);
@@ -603,6 +733,13 @@ export interface JobFilters {
    * that are already decided. Filtering by an explicit `stage` implies it.
    */
   includeActioned?: boolean;
+  /**
+   * Show postings judged no longer open. Off by default, for the same reason
+   * `includeActioned` is: a filled or expired role is not a candidate, and
+   * leaving it in the list is the complaint this flag exists to answer. Nothing
+   * is deleted, so switching this on brings every one of them back.
+   */
+  includeClosed?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -646,6 +783,8 @@ export async function listJobs(userId: number, filters: JobFilters = {}): Promis
   if (!filters.stage && !filters.includeActioned) {
     where.push(`(a.stage IS NULL OR a.stage NOT IN (${ACTIONED_SQL}))`);
   }
+  // Postings that are no longer open. Filtered, never deleted.
+  if (!filters.includeClosed) where.push('j.closed_at IS NULL');
 
   const clause = `WHERE ${where.join(' AND ')}`;
   const limit = Math.min(filters.limit ?? 50, 200);
@@ -766,6 +905,7 @@ export async function notifyNewTopMatches(userId: number): Promise<{ job_id: num
       WHERE m.profile_id = ${MY_PROFILE}
         AND j.duplicate_of IS NULL
         AND m.recommendation = 'highly_recommended'
+        AND j.closed_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = $1 AND n.job_id = j.id)
         AND NOT EXISTS (SELECT 1 FROM applications a
                          WHERE a.user_id = $1 AND a.job_id = j.id
@@ -830,13 +970,14 @@ export interface DashboardStats {
 export async function dashboardStats(userId: number): Promise<DashboardStats> {
   const { rows } = await getPool().query(
     `SELECT
-        (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NULL) AS total_jobs,
-        (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NULL AND collected_at > now() - interval '24 hours') AS new_jobs,
+        (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NULL AND closed_at IS NULL) AS total_jobs,
+        (SELECT count(*)::int FROM jobs WHERE duplicate_of IS NULL AND closed_at IS NULL AND collected_at > now() - interval '24 hours') AS new_jobs,
         (SELECT count(*)::int FROM matches m JOIN jobs j ON j.id = m.job_id
           WHERE j.duplicate_of IS NULL AND m.profile_id = ${MY_PROFILE}
             AND m.recommendation = 'highly_recommended'
+            AND j.closed_at IS NULL
             -- Counts what the "Top matches" link will actually show: a job
-            -- already applied to (or closed) has left the discovery list.
+            -- already applied to, or no longer open, has left the discovery list.
             AND NOT EXISTS (SELECT 1 FROM applications a
                              WHERE a.user_id = $1 AND a.job_id = j.id
                                AND a.stage IN (${ACTIONED_SQL}))) AS highly_matched,

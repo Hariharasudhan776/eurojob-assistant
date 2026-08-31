@@ -90,7 +90,14 @@ const DEFAULT_LOCATIONS = [
 /** The API's own taxonomy. Filtering at the source beats discarding here. */
 const CATEGORIES = ['Software Engineering', 'Data Science', 'IT'];
 
-const MAX_PAGES_PER_LOCATION = Math.max(1, Number(process.env.MUSE_MAX_PAGES || 2));
+/**
+ * Raised from 2. The location parameter is a weak filter -- of 80 results for
+ * "Dublin, Ireland", 3 were actually Irish -- so the local postings this source
+ * exists to find are thinly spread through the pages rather than concentrated on
+ * the first two. Reading twice as deep is the only way to reach them, and at
+ * 20 results a page it is still four requests per location.
+ */
+const MAX_PAGES_PER_LOCATION = Math.max(1, Number(process.env.MUSE_MAX_PAGES || 4));
 
 /**
  * How old a Muse posting may be, in days.

@@ -135,6 +135,24 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
     <div className="space-y-4">
       <BackButton />
 
+      {/* A closed posting is still readable -- nothing is deleted, and the
+          reasoning that went into a tailored resume is worth keeping. It just
+          says so at the top, before the reader spends an evening on it. */}
+      {job.closed_at && (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-200">
+            {job.closed_reason === 'reported'
+              ? 'No longer available — someone followed the link and found the posting gone.'
+              : 'Probably closed — no source has listed this posting for weeks.'}
+          </p>
+          <p className="mt-1 text-xs text-amber-200/70">
+            {job.closed_reason === 'reported'
+              ? 'You can put it back from the Actions panel below.'
+              : 'This is a judgement from dates, not a fact. If a source lists it again it comes back automatically.'}
+          </p>
+        </div>
+      )}
+
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -313,7 +331,7 @@ export default async function JobDetail({ params }: { params: Promise<{ id: stri
         />
       )}
 
-      <JobActions jobId={job.id} currentStage={job.stage} notes={job.notes} />
+      <JobActions jobId={job.id} currentStage={job.stage} notes={job.notes} closedReason={job.closed_reason} />
 
       <Card title="Original description">
         {/* Tags stripped: several sources store raw HTML, and this panel was

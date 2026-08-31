@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Client } from 'pg';
 import { getPool } from '../src/lib/db/pool.ts';
-import { backfillRoleCategories, ensureUser, ensureSources, promoteToAdmin, saveProfile } from '../src/lib/db/repo.ts';
+import { backfillCountries, backfillRoleCategories, ensureUser, ensureSources, promoteToAdmin, saveProfile } from '../src/lib/db/repo.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import { SOURCES } from '../src/lib/jobs/registry.ts';
 
@@ -95,6 +95,11 @@ async function main() {
   // only; no row is removed.
   const backfill = await backfillRoleCategories();
   console.log(`role categories: ${backfill.updated} updated of ${backfill.scanned} jobs`);
+
+  // A parser improvement does not reach stored rows on its own. Cheap when
+  // there is nothing to do -- it only reads rows whose country is already NULL.
+  const places = await backfillCountries();
+  console.log(`countries: ${places.placed} placed of ${places.scanned} unplaced jobs`);
 
   await pool.end();
   console.log('\nready. next: npm run sync');

@@ -28,6 +28,25 @@ import type { JobQuery } from './jobs/types.ts';
  *    would make it meaningless, so target countries are a per-user preference
  *    (`search_preferences.countries`), defaulting to DEFAULT_TARGET_COUNTRIES.
  */
+/**
+ * The scoring default for someone who has not said where they want to work.
+ *
+ * This is the European market the app was built for -- English-speaking or
+ * sponsorship-friendly countries with a route for a non-EU candidate. A user can
+ * replace it from the Settings page, and their choice is what the location
+ * component uses from then on.
+ */
+export const DEFAULT_TARGET_COUNTRIES = [
+  'DE', 'NL', 'SE', 'FI', 'DK', 'NO', 'IE', 'BE', 'AT', 'FR', 'CH', 'LU', 'PL',
+  // India and the Gulf. Europe remains the priority and is unaffected -- the
+  // location component checks membership of this list, so adding markets lifts
+  // those postings without lowering any European one. They are here because
+  // this candidate's ERP experience is worth more in the markets where Axpert
+  // is actually sold, and because he already lives and works in Oman, so no
+  // sponsorship question arises for the Gulf at all.
+  'IN', 'AE', 'SA', 'QA', 'OM', 'KW', 'BH',
+];
+
 export const DEFAULT_SEARCH: JobQuery = {
   countries: [],
   titles: [
@@ -48,24 +67,22 @@ export const DEFAULT_SEARCH: JobQuery = {
   ],
   keywords: ['oracle', 'plsql', 'postgresql', 'sql', 'database', 'erp', 'axpert'],
   postedWithinDays: 30,
-  limit: Number(process.env.JOB_COLLECTION_LIMIT || 600),
+  /**
+   * Where a source should spend EXTRA request budget when it has some. It does
+   * not restrict collection -- `countries: []` above still means everywhere.
+   * Adzuna uses it to sweep its consultancy and engineering categories in the
+   * markets that matter rather than across all twenty-one endpoints.
+   */
+  priorityCountries: DEFAULT_TARGET_COUNTRIES,
+  /**
+   * The per-source ceiling, raised from 600.
+   *
+   * 600 was not a politeness limit -- each source paces its own requests and
+   * caps its own pages, and that is what actually protects the API. It was a cap
+   * on ROWS, and it silently decided that a global sweep of twenty-one Adzuna
+   * countries plus Arbeitnow plus The Muse should return fewer jobs than Adzuna
+   * alone offers for Germany. Requests are the scarce resource; rows are free
+   * once fetched.
+   */
+  limit: Number(process.env.JOB_COLLECTION_LIMIT || 5000),
 };
-
-/**
- * The scoring default for someone who has not said where they want to work.
- *
- * This is the European market the app was built for -- English-speaking or
- * sponsorship-friendly countries with a route for a non-EU candidate. A user can
- * replace it from the Settings page, and their choice is what the location
- * component uses from then on.
- */
-export const DEFAULT_TARGET_COUNTRIES = [
-  'DE', 'NL', 'SE', 'FI', 'DK', 'NO', 'IE', 'BE', 'AT', 'FR', 'CH', 'LU', 'PL',
-  // India and the Gulf. Europe remains the priority and is unaffected -- the
-  // location component checks membership of this list, so adding markets lifts
-  // those postings without lowering any European one. They are here because
-  // this candidate's ERP experience is worth more in the markets where Axpert
-  // is actually sold, and because he already lives and works in Oman, so no
-  // sponsorship question arises for the Gulf at all.
-  'IN', 'AE', 'SA', 'QA', 'OM', 'KW', 'BH',
-];

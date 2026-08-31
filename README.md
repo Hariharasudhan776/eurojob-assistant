@@ -244,9 +244,14 @@ Implement `JobSource` in `src/lib/jobs/sources/`, add one line to `src/lib/jobs/
 |---|---|---|---|
 | Arbeitnow | none | strong German and EU | full |
 | Adzuna | free | 21 countries: GB DE NL FR PL AT BE CH IT ES US CA AU NZ ZA SG IN BR MX RU AR | first 500 characters only |
-| The Muse | none (optional) | **Ireland** — Dublin, Cork, Galway — plus the Nordics and global hubs | full |
+| The Muse | none (optional) | **Ireland** — Dublin, Cork, Galway — plus the Nordics and the Gulf | full |
+| Jobicy | none | worldwide **remote** | full |
 
 **The Muse exists to close the Ireland gap.** Adzuna operates no Irish endpoint, and Ireland is the most valuable market for a non-EU English-speaking candidate: the Critical Skills Employment Permit is a real sponsorship route. A search that silently omitted it was omitting the best odds in the feed.
+
+**Jobicy exists to close the remote gap.** Adzuna serves no Gulf country, no Nordic country, no Ireland, no Luxembourg and no Portugal — eleven of the countries in the default target list — and the other two sources reach them thinly. Jobicy does not fix that country by country; it covers the one category where the employer's country is not a visa question at all. For a candidate who needs sponsorship, remote work is not a consolation prize.
+
+**Adzuna asks for date order, not relevance order.** This is the single most consequential line in the collector. Adzuna sorts by relevance when `sort_by` is omitted, and relevance is unrelated to recency — measured on the live API, the first relevance-ranked result for this search was 12 days old in Germany and 30 days old in the UK. Reading the first pages of a relevance ranking therefore returns the same settled postings every day and never today's, which is why Adzuna's own (date-ordered) alert emails carried jobs the app had never shown. With `sort_by=date` a daily run is complete by construction.
 
 **Rules for any new source:** public APIs and feeds only. No CAPTCHA solving, no login bypass, no paywall circumvention, no scraping a site whose terms forbid it. Adzuna truncates descriptions to 500 characters and this app does *not* follow through to the employer page to get the rest, on purpose.
 
@@ -291,7 +296,8 @@ src/lib/match/score.ts        the six-component scorer
 src/lib/match/rescore.ts      score the shared feed against one user, in batches
 src/lib/jobs/types.ts         the JobSource interface, and the country names
 src/lib/jobs/parse.ts         location, visa, language, experience extraction
-src/lib/jobs/sources/         one file per job board (arbeitnow, adzuna, themuse)
+src/lib/jobs/sources/         one file per job board (arbeitnow, adzuna, themuse, jobicy)
+src/lib/jobs/lifecycle.ts     when a posting stops counting as open, and why not more than that
 src/lib/ai/prompts.ts         prompts, with the truthfulness rule
 src/lib/ai/verify.ts          checks generated text against the profile
 src/lib/ai/budget.ts          spend caps, per user

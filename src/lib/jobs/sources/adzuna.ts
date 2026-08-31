@@ -28,9 +28,14 @@ import {
  *     source, which is far cheaper and more reliable than pulling everything
  *     and discarding non-technical roles client-side.
  *
+ *  3. **It sorts by relevance unless told otherwise**, and relevance is not
+ *     recency -- see SORT_ORDER below. This source asks for date order, because
+ *     a daily run whose job is to catch what is new must read the new end.
+ *
  * Request budget matters: the free tier is limited per day, so this issues ONE
  * request per country per page using `what_or` rather than one per job title.
- * Twenty-one countries at two pages each is ~42 calls per run.
+ * Twenty-one countries at three pages, plus a one-page sweep of two extra
+ * categories in the priority markets, is ~80 calls per run.
  */
 
 interface AdzunaJob {
@@ -86,12 +91,50 @@ const CURRENCY: Record<string, string> = {
 };
 
 /**
- * Request budget. Twenty-one countries at two pages each is ~42 calls per run,
- * which the free tier absorbs; ADZUNA_MAX_PAGES exists for anyone whose quota is
- * tighter or who wants to sweep deeper.
+ * Request budget. Twenty-one countries at three pages each is ~63 calls per run
+ * plus the priority-category sweep below, which the free tier (250/day) absorbs
+ * comfortably. ADZUNA_MAX_PAGES exists for anyone whose quota is tighter -- and
+ * for the opposite case: set it to 10 for a one-off deep backfill, then put it
+ * back. A daily run only has to keep up with a day of new postings.
  */
-const MAX_PAGES_PER_COUNTRY = Math.max(1, Number(process.env.ADZUNA_MAX_PAGES || 2));
+const MAX_PAGES_PER_COUNTRY = Math.max(1, Number(process.env.ADZUNA_MAX_PAGES || 3));
 const RESULTS_PER_PAGE = 50;
+
+/**
+ * Newest first, NOT most relevant first -- and this is the fix for the whole
+ * class of "Adzuna emailed me about a job the app never showed".
+ *
+ * Adzuna sorts by relevance when `sort_by` is omitted, and relevance has no
+ * relationship to recency: measured on the live API, the first relevance-ranked
+ * result for this search was 12 days old in DE, 30 days old in GB and 19 days
+ * old in US. Reading only the first pages of a relevance ranking therefore reads
+ * the same settled postings every day and never sees today's. Adzuna's own alert
+ * emails are date-ordered, which is exactly why they carried jobs this app did
+ * not. Date order plus `max_days_old` makes a daily run complete by
+ * construction: whatever appeared since yesterday is at the top.
+ */
+const SORT_ORDER = 'date';
+
+/**
+ * The categories swept beyond `it-jobs`.
+ *
+ * `category=it-jobs` filters at the source, which is cheap and precise -- but it
+ * is Adzuna's judgement of the posting, not ours, and it is wrong often enough
+ * to matter for this profile. Measured on the live API: `consultancy-jobs`
+ * carries "ERP-Consultant Variantenmanagement" and `engineering-jobs` carries
+ * "Application Engineer ETL & DWH" in Germany. Both are squarely in scope, and
+ * both were invisible while it-jobs was the only category asked for.
+ *
+ * The other twenty-six categories were measured too and are deliberately NOT
+ * here: admin, accounting-finance and scientific-qa returned procurement clerks,
+ * tax associates and animal technicians whose only tie to the query was the word
+ * "database" somewhere in the body. The role classifier would drop them anyway,
+ * but not before spending the requests to fetch them.
+ *
+ * This sweep runs only in `priorityCountries`, one page each, so it costs a
+ * handful of calls rather than a multiplier across every endpoint.
+ */
+const EXTRA_CATEGORIES = ['consultancy-jobs', 'engineering-jobs'];
 
 export class AdzunaSource implements JobSource {
   readonly slug = 'adzuna';
@@ -128,65 +171,120 @@ export class AdzunaSource implements JobSource {
     const terms = (query.keywords?.length ? query.keywords : ['oracle', 'plsql', 'postgresql', 'sql', 'database', 'erp'])
       .join(' ');
 
-    const perCountryCap = Math.max(1, Math.ceil(query.limit / Math.max(1, countries.length)));
+    /**
+     * The per-country budget is now a PAGE budget, not a slice of the results.
+     *
+     * It used to be `ceil(limit / countries)` -- with the shipped defaults, 29 --
+     * and the loop broke out of the page the moment it hit that. So every run
+     * fetched fifty results per country and threw twenty-one of them away
+     * unread, then stopped. Adzuna had 1,413 matching IT postings in Germany
+     * alone over the same thirty days; the whole feed held 1,376 from all
+     * twenty-one countries put together. Nothing was wrong with the API or the
+     * search -- the collector was discarding what it had already paid to fetch.
+     *
+     * Pages are the honest control: they bound the REQUESTS, which are the
+     * scarce resource, instead of bounding the rows, which are free once
+     * fetched.
+     */
+    const perCountryCap = MAX_PAGES_PER_COUNTRY * RESULTS_PER_PAGE;
+    const priority = new Set((query.priorityCountries ?? []).filter((c) => COUNTRY_ENDPOINTS[c]));
 
+    /**
+     * One search request. `null` means "this page failed, stop this sweep";
+     * `'abort'` means the credentials or the quota are gone and every remaining
+     * country would fail the same way.
+     */
+    const requestPage = async (
+      country: string,
+      endpoint: string,
+      pageNo: number,
+      category: string
+    ): Promise<AdzunaResponse | null | 'abort'> => {
+      const params = new URLSearchParams({
+        app_id: appId,
+        app_key: appKey,
+        results_per_page: String(RESULTS_PER_PAGE),
+        what_or: terms,
+        category,
+        sort_by: SORT_ORDER,
+        'content-type': 'application/json',
+      });
+      if (query.postedWithinDays) params.set('max_days_old', String(query.postedWithinDays));
+
+      const url = `https://api.adzuna.com/v1/api/jobs/${endpoint}/search/${pageNo}?${params}`;
+      const where = `${country} ${category} page ${pageNo}`;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const response = await fetch(url, { signal: AbortSignal.timeout(25_000) });
+          if (response.status === 429 || response.status >= 500) {
+            const retryAfter = Number(response.headers.get('retry-after'));
+            const backoff =
+              Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2_000 * 2 ** (attempt - 1);
+            if (attempt === 3) {
+              warnings.push(`${where}: HTTP ${response.status} after 3 attempts`);
+              return null;
+            }
+            await sleep(backoff);
+            continue;
+          }
+          if (response.status === 401 || response.status === 403) {
+            warnings.push(`HTTP ${response.status}: Adzuna rejected the credentials or the quota is exhausted`);
+            return 'abort';
+          }
+          if (!response.ok) {
+            warnings.push(`${where}: HTTP ${response.status}`);
+            return null;
+          }
+          return (await response.json()) as AdzunaResponse;
+        } catch (err) {
+          warnings.push(`${where}: ${err instanceof Error ? err.message : String(err)}`);
+          return null;
+        }
+      }
+      return null;
+    };
+
+    const take = (payload: AdzunaResponse, country: string, endpoint: string): number => {
+      let added = 0;
+      for (const raw of payload.results ?? []) {
+        const normalised = this.normalise(raw, country, endpoint);
+        if (!normalised) continue;
+        collected.push(normalised);
+        added += 1;
+      }
+      return added;
+    };
+
+    // --- pass 1: it-jobs, every country the source serves --------------------
     for (const country of countries) {
+      // The source-level ceiling still binds. Pages control the REQUESTS, which
+      // is the scarce resource; this is the row ceiling, and it matters again
+      // the moment someone sets ADZUNA_MAX_PAGES high for a deep backfill.
+      if (collected.length >= query.limit) break;
       const endpoint = COUNTRY_ENDPOINTS[country]!;
       let countryCount = 0;
 
-      for (let page = 1; page <= MAX_PAGES_PER_COUNTRY && countryCount < perCountryCap; page++) {
-        const params = new URLSearchParams({
-          app_id: appId,
-          app_key: appKey,
-          results_per_page: String(RESULTS_PER_PAGE),
-          what_or: terms,
-          category: 'it-jobs',
-          'content-type': 'application/json',
-        });
-        if (query.postedWithinDays) params.set('max_days_old', String(query.postedWithinDays));
-
-        const url = `https://api.adzuna.com/v1/api/jobs/${endpoint}/search/${page}?${params}`;
-
-        let payload: AdzunaResponse | null = null;
-        for (let attempt = 1; attempt <= 3 && payload === null; attempt++) {
-          try {
-            const response = await fetch(url, { signal: AbortSignal.timeout(25_000) });
-            if (response.status === 429 || response.status >= 500) {
-              const retryAfter = Number(response.headers.get('retry-after'));
-              const backoff = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2_000 * 2 ** (attempt - 1);
-              if (attempt === 3) {
-                warnings.push(`${country} page ${page}: HTTP ${response.status} after 3 attempts`);
-                break;
-              }
-              await sleep(backoff);
-              continue;
-            }
-            if (response.status === 401 || response.status === 403) {
-              // Credentials are wrong or the daily quota is spent. Retrying
-              // every remaining country would just burn time.
-              return { jobs: collected, warnings: [...warnings, `HTTP ${response.status}: Adzuna rejected the credentials or the quota is exhausted`] };
-            }
-            if (!response.ok) {
-              warnings.push(`${country} page ${page}: HTTP ${response.status}`);
-              break;
-            }
-            payload = (await response.json()) as AdzunaResponse;
-          } catch (err) {
-            warnings.push(`${country} page ${page}: ${err instanceof Error ? err.message : String(err)}`);
-            break;
-          }
-        }
-
+      for (let pageNo = 1; pageNo <= MAX_PAGES_PER_COUNTRY && countryCount < perCountryCap; pageNo++) {
+        const payload = await requestPage(country, endpoint, pageNo, 'it-jobs');
+        if (payload === 'abort') return { jobs: collected, warnings };
         if (!payload?.results?.length) break;
+        countryCount += take(payload, country, endpoint);
+        // A short page is the last page; asking for the next one wastes a call.
+        if (payload.results.length < RESULTS_PER_PAGE) break;
+        await sleep(Math.ceil(60_000 / this.rateLimit.requestsPerMinute));
+      }
+    }
 
-        for (const raw of payload.results) {
-          if (countryCount >= perCountryCap) break;
-          const normalised = this.normalise(raw, country, endpoint);
-          if (!normalised) continue;
-          collected.push(normalised);
-          countryCount += 1;
-        }
-
+    // --- pass 2: the categories Adzuna files ERP and data work under ---------
+    for (const country of countries) {
+      if (collected.length >= query.limit) break;
+      if (!priority.has(country)) continue;
+      const endpoint = COUNTRY_ENDPOINTS[country]!;
+      for (const category of EXTRA_CATEGORIES) {
+        const payload = await requestPage(country, endpoint, 1, category);
+        if (payload === 'abort') return { jobs: collected, warnings };
+        if (payload?.results?.length) take(payload, country, endpoint);
         await sleep(Math.ceil(60_000 / this.rateLimit.requestsPerMinute));
       }
     }

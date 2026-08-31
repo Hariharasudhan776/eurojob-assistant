@@ -53,6 +53,16 @@ export type NormalisedJob = z.infer<typeof NormalisedJob>;
 export interface JobQuery {
   /** ISO 3166-1 alpha-2 codes. */
   countries: string[];
+  /**
+   * Where the reader actually wants to work.
+   *
+   * Distinct from `countries`, which restricts collection and is deliberately
+   * empty (collect everywhere). This list does not restrict anything -- it tells
+   * a source where to spend its *extra* request budget when it has one. Adzuna
+   * uses it to sweep additional categories in the markets that matter, without
+   * multiplying calls across twenty-one endpoints.
+   */
+  priorityCountries?: string[];
   titles: string[];
   keywords?: string[];
   remote?: RemoteMode;

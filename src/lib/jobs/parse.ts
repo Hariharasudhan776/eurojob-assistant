@@ -122,6 +122,70 @@ const LOCATION_HINTS: Record<string, string> = {
   slovakia: 'SK', bratislava: 'SK', slovenia: 'SI', ljubljana: 'SI',
   lithuania: 'LT', vilnius: 'LT', latvia: 'LV', riga: 'LV',
   cyprus: 'CY', malta: 'MT', iceland: 'IS', reykjavik: 'IS',
+
+  // --- the long tail, added from the feed rather than from imagination ------
+  //
+  // 357 collected postings were carrying a location string this function could
+  // not place, and the list of them is the argument for everything below:
+  // Mainz, Nuremberg, Karlsruhe, Heidelberg, Dresden, Muenster, Essen, Bonn and
+  // ninety more German towns, plus Reading, Cambridge, Oxford, Cardiff and
+  // Newcastle. Every one of those rows was invisible to the country filter and
+  // scored as "location unknown" against a candidate whose whole target list is
+  // countries.
+  //
+  // A city list can never be complete -- German boards advertise in villages --
+  // so the more important additions are the ones underneath it: the sixteen
+  // federal states, which appear as the tail of "Viernheim, Hesse" and
+  // "Ottobrunn, Bavaria", and the German-language markers, which place a
+  // posting by the language it is written in rather than by naming its town.
+
+  // Germany: the rest of the top forty by population, plus both spellings where
+  // English and German differ.
+  nuremberg: 'DE', 'nürnberg': 'DE', nuernberg: 'DE', mainz: 'DE', karlsruhe: 'DE',
+  heidelberg: 'DE', dresden: 'DE', 'münster': 'DE', muenster: 'DE', essen: 'DE',
+  bonn: 'DE', freiburg: 'DE', bielefeld: 'DE', dortmund: 'DE', augsburg: 'DE',
+  'saarbrücken': 'DE', saarbruecken: 'DE', mannheim: 'DE', bochum: 'DE',
+  potsdam: 'DE', bremen: 'DE', hannover: 'DE', hanover: 'DE', darmstadt: 'DE',
+  regensburg: 'DE', wuppertal: 'DE', kiel: 'DE', magdeburg: 'DE',
+  'osnabrück': 'DE', osnabrueck: 'DE', trier: 'DE', 'lübeck': 'DE', luebeck: 'DE',
+  rostock: 'DE', erfurt: 'DE', jena: 'DE', chemnitz: 'DE', ulm: 'DE',
+  ingolstadt: 'DE', 'würzburg': 'DE', wuerzburg: 'DE', wolfsburg: 'DE',
+  braunschweig: 'DE', brunswick: 'DE', aachen: 'DE', krefeld: 'DE',
+  'mönchengladbach': 'DE', kassel: 'DE', 'göttingen': 'DE', goettingen: 'DE',
+  heilbronn: 'DE', koblenz: 'DE', oldenburg: 'DE', paderborn: 'DE', siegen: 'DE',
+  hildesheim: 'DE', wiesbaden: 'DE', offenbach: 'DE', 'fürth': 'DE',
+  erlangen: 'DE', bayreuth: 'DE', konstanz: 'DE', 'lüneburg': 'DE',
+  'böblingen': 'DE', boeblingen: 'DE', neuss: 'DE', leverkusen: 'DE',
+  gelsenkirchen: 'DE', duisburg: 'DE', 'reutlingen': 'DE', pforzheim: 'DE',
+  schweinfurt: 'DE', wetzlar: 'DE', giessen: 'DE', 'gießen': 'DE',
+  waiblingen: 'DE', oberhausen: 'DE', 'lörrach': 'DE',
+
+  // The sixteen federal states. These are what "Viernheim, Hesse" and
+  // "Barleben, Saxony-Anhalt" hang on, and they cover every German village the
+  // list above will always be missing.
+  'baden-württemberg': 'DE', 'baden-wurttemberg': 'DE', bavaria: 'DE', bayern: 'DE',
+  brandenburg: 'DE', hesse: 'DE', hessen: 'DE', 'lower saxony': 'DE',
+  niedersachsen: 'DE', 'north rhine-westphalia': 'DE', 'nordrhein-westfalen': 'DE',
+  'rhineland-palatinate': 'DE', 'rheinland-pfalz': 'DE', saarland: 'DE',
+  saxony: 'DE', sachsen: 'DE', 'saxony-anhalt': 'DE', 'sachsen-anhalt': 'DE',
+  'schleswig-holstein': 'DE', thuringia: 'DE', 'thüringen': 'DE',
+  'mecklenburg-vorpommern': 'DE',
+
+  // Written in German, therefore advertised in Germany. "deutschlandweit" and
+  // "Homeoffice" name no place at all, which is exactly why nothing above
+  // catches them.
+  deutschlandweit: 'DE', homeoffice: 'DE', 'großraum': 'DE', grossraum: 'DE',
+  bundesweit: 'DE',
+
+  // UK, from the same unplaced list.
+  reading: 'GB', cambridge: 'GB', oxford: 'GB', newcastle: 'GB', cardiff: 'GB',
+  sheffield: 'GB', belfast: 'GB', liverpool: 'GB', nottingham: 'GB',
+  southampton: 'GB', brighton: 'GB', coventry: 'GB', 'milton keynes': 'GB',
+  aberdeen: 'GB', swansea: 'GB', york: 'GB',
+
+  // Austria and Switzerland, whose smaller cities were as absent as Germany's.
+  salzburg: 'AT', innsbruck: 'AT', klagenfurt: 'AT',
+  winterthur: 'CH', 'st. gallen': 'CH', lugano: 'CH',
 };
 
 /**

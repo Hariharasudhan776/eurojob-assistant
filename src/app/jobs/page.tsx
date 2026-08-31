@@ -36,6 +36,7 @@ export default async function JobsPage({
     role: one('role') || undefined,
     search: one('q') || undefined,
     includeActioned: one('actioned') === '1',
+    includeClosed: one('closed') === '1',
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   };
@@ -128,7 +129,13 @@ export default async function JobsPage({
               them back into the list for the rare "what did that one say again". */}
           <label className="flex items-center gap-2 pb-2 text-xs font-semibold text-[var(--color-muted)]">
             <input type="checkbox" name="actioned" value="1" defaultChecked={one('actioned') === '1'} className="accent-[var(--color-accent)]" />
-            Show applied &amp; closed
+            Show applied
+          </label>
+          {/* Expired and reported-gone postings. Nothing is deleted, so this is
+              the way back to one. */}
+          <label className="flex items-center gap-2 pb-2 text-xs font-semibold text-[var(--color-muted)]">
+            <input type="checkbox" name="closed" value="1" defaultChecked={one('closed') === '1'} className="accent-[var(--color-accent)]" />
+            Show expired
           </label>
           <GradientButton>Apply filters</GradientButton>
           <Link href="/jobs" className="pb-2 text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-fg)]">clear</Link>

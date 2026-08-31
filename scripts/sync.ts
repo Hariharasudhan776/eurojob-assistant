@@ -27,7 +27,7 @@ import { contentHash } from '../src/lib/jobs/parse.ts';
 import { scoreJob } from '../src/lib/match/score.ts';
 import { getPool } from '../src/lib/db/pool.ts';
 import {
-  ensureUser, ensureSources, findUserByEmail, latestProfile, linkDuplicates, listJobs,
+  ensureUser, ensureSources, findUserByEmail, latestProfile, linkDuplicates, listJobs, sweepClosedJobs,
   recordSourceRun, saveAiSummary, saveMatches, upsertJob, dashboardStats, usersWithProfiles,
 } from '../src/lib/db/repo.ts';
 import { STAGE_MODELS } from '../src/lib/ai/client.ts';
@@ -79,7 +79,11 @@ async function main() {
     storedIds.push(await upsertJob(job, contentHash(job)));
   }
   const linked = await linkDuplicates();
-  console.log(`  ${storedIds.length} jobs stored, ${linked} marked as duplicates\n`);
+  // AFTER the upsert, never before: a posting this run returned has just had
+  // its last_seen_at refreshed, so the sweep cannot close something it just saw.
+  const { closed, reopened } = await sweepClosedJobs();
+  console.log(`  ${storedIds.length} jobs stored, ${linked} marked as duplicates`);
+  console.log(`  ${closed} closed as expired, ${reopened} reopened\n`);
 
   // --- score, per user ----------------------------------------------------
   console.log('scoring...');

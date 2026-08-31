@@ -4,6 +4,7 @@ import { contentHash } from './parse.ts';
 import { ArbeitnowSource } from './sources/arbeitnow.ts';
 import { AdzunaSource } from './sources/adzuna.ts';
 import { TheMuseSource } from './sources/themuse.ts';
+import { JobicySource } from './sources/jobicy.ts';
 
 /**
  * Source registry. Adding a source means adding one line here (spec §5) --
@@ -14,8 +15,16 @@ import { TheMuseSource } from './sources/themuse.ts';
  * The Muse: no key, full descriptions, and the only source covering IRELAND --
  * which Adzuna does not serve at all and which matters most for a non-EU
  * candidate needing sponsorship.
+ * Jobicy: no key, full descriptions, worldwide REMOTE roles -- the one category
+ * for which the employer's country is not a visa problem, and the only coverage
+ * the other three give of the Gulf and the Nordics.
  */
-export const SOURCES: JobSource[] = [new ArbeitnowSource(), new AdzunaSource(), new TheMuseSource()];
+export const SOURCES: JobSource[] = [
+  new ArbeitnowSource(),
+  new AdzunaSource(),
+  new TheMuseSource(),
+  new JobicySource(),
+];
 
 export interface CollectionReport {
   jobs: NormalisedJob[];

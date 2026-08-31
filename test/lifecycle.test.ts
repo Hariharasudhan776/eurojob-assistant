@@ -6,6 +6,7 @@ import { geoCountry } from '../src/lib/jobs/sources/jobicy.ts';
 import { parseLocation } from '../src/lib/jobs/parse.ts';
 import { DEFAULT_SEARCH, DEFAULT_TARGET_COUNTRIES } from '../src/lib/search-config.ts';
 import { ATS_BOARDS } from '../src/lib/jobs/sources/ats-boards.ts';
+import { MATCH_COLUMNS, MATCH_INSERT_CHUNK } from '../src/lib/db/repo.ts';
 
 // --- the closure rule --------------------------------------------------------
 
@@ -124,4 +125,22 @@ test('no demo or placeholder board ships in the list', () => {
   for (const board of ATS_BOARDS) {
     assert.ok(!/demo|test|example|sandbox/i.test(board.slug), `${board.slug} looks like a placeholder board`);
   }
+});
+
+// --- the 65,535-parameter ceiling -------------------------------------------
+
+test('a match INSERT can never exceed the wire protocol parameter limit', () => {
+  // PostgreSQL counts bind parameters in a 16-bit field. saveMatches used to
+  // build one statement for every entry handed to it, which worked silently
+  // until the feed passed 65535/14 = 4,681 jobs and then failed with
+  // "bind message has 11422 parameter formats but 0 parameters" -- the count
+  // having wrapped at 76,958. This asserts the chunk keeps a wide margin.
+  const PG_MAX_BIND_PARAMS = 65535;
+  assert.ok(
+    MATCH_INSERT_CHUNK * MATCH_COLUMNS < PG_MAX_BIND_PARAMS,
+    `${MATCH_INSERT_CHUNK} rows x ${MATCH_COLUMNS} columns exceeds ${PG_MAX_BIND_PARAMS}`
+  );
+  // And a real margin, not a squeak past it: adding a column must not silently
+  // put the chunk back over the line.
+  assert.ok(MATCH_INSERT_CHUNK * (MATCH_COLUMNS + 8) < PG_MAX_BIND_PARAMS, 'no headroom for new columns');
 });

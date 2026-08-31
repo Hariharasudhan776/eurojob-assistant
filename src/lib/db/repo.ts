@@ -603,50 +603,83 @@ export async function saveMatch(jobId: number, profileId: number, match: MatchRe
  * hundred round trips, which is tolerable against loopback and far too slow
  * against a managed database in another data centre.
  */
+/** Columns written per match row. The chunk size below is derived from it. */
+export const MATCH_COLUMNS = 14;
+
+/**
+ * Rows per INSERT.
+ *
+ * **PostgreSQL's wire protocol counts bind parameters in a 16-bit field, so a
+ * single statement can carry at most 65,535 of them.** This function used to
+ * build ONE insert covering every entry it was handed, which is 14 parameters
+ * per row — so it worked silently until the feed passed 4,681 jobs and then
+ * failed with `bind message has 11422 parameter formats but 0 parameters`. That
+ * number is the giveaway: 5,497 rows x 14 = 76,958, and 76,958 - 65,536 =
+ * 11,422. The count had wrapped.
+ *
+ * It is a limit of the protocol, not of Postgres or of the machine, so no
+ * amount of memory or timeout would have helped, and the error names neither
+ * the cause nor the fix. 500 rows is 7,000 parameters — an order of magnitude
+ * of headroom, and small enough that each statement crosses the network to a
+ * managed database quickly.
+ */
+export const MATCH_INSERT_CHUNK = 500;
+
 export async function saveMatches(profileId: number, entries: { jobId: number; match: MatchResult }[]): Promise<number> {
   if (entries.length === 0) return 0;
 
-  const COLUMNS = 14;
-  const values: unknown[] = [];
-  const tuples: string[] = [];
+  let written = 0;
 
-  for (const [index, entry] of entries.entries()) {
-    const base = index * COLUMNS;
-    tuples.push(`(${Array.from({ length: COLUMNS }, (_, i) => `$${base + i + 1}`).join(',')})`);
-    const m = entry.match;
-    values.push(
-      entry.jobId, profileId, m.overall, m.components.technical.score,
-      m.components.experience.score, m.components.education.score,
-      m.components.location.score, m.components.language.score,
-      m.components.aiTools.score, m.recommendation,
-      JSON.stringify({
-        components: m.components,
-        requirements: m.requirements,
-        relevance: m.relevance,
-        confidence: m.confidence,
-        blockers: m.blockers,
-      }),
-      m.strongMatches, m.partialMatches, m.missingSkills
-    );
-  }
+  // One transaction over all chunks: scoring is derived data, and a half-scored
+  // feed is worse than an unscored one -- the Jobs list would rank a fraction of
+  // the postings against the new profile and the rest against the old.
+  await withTransaction(async (client) => {
+    for (let start = 0; start < entries.length; start += MATCH_INSERT_CHUNK) {
+      const chunk = entries.slice(start, start + MATCH_INSERT_CHUNK);
+      const values: unknown[] = [];
+      const tuples: string[] = [];
 
-  const { rowCount } = await getPool().query(
-    `INSERT INTO matches (
-        job_id, profile_id, overall, technical, experience, education, location,
-        language, ai_tools, recommendation, breakdown, strong_matches,
-        partial_matches, missing_skills
-     ) VALUES ${tuples.join(',')}
-     ON CONFLICT (job_id, profile_id) DO UPDATE SET
-        overall = EXCLUDED.overall, technical = EXCLUDED.technical,
-        experience = EXCLUDED.experience, education = EXCLUDED.education,
-        location = EXCLUDED.location, language = EXCLUDED.language,
-        ai_tools = EXCLUDED.ai_tools, recommendation = EXCLUDED.recommendation,
-        breakdown = EXCLUDED.breakdown, strong_matches = EXCLUDED.strong_matches,
-        partial_matches = EXCLUDED.partial_matches, missing_skills = EXCLUDED.missing_skills,
-        scored_at = now()`,
-    values
-  );
-  return rowCount ?? 0;
+      for (const [index, entry] of chunk.entries()) {
+        const base = index * MATCH_COLUMNS;
+        tuples.push(`(${Array.from({ length: MATCH_COLUMNS }, (_, i) => `$${base + i + 1}`).join(',')})`);
+        const m = entry.match;
+        values.push(
+          entry.jobId, profileId, m.overall, m.components.technical.score,
+          m.components.experience.score, m.components.education.score,
+          m.components.location.score, m.components.language.score,
+          m.components.aiTools.score, m.recommendation,
+          JSON.stringify({
+            components: m.components,
+            requirements: m.requirements,
+            relevance: m.relevance,
+            confidence: m.confidence,
+            blockers: m.blockers,
+          }),
+          m.strongMatches, m.partialMatches, m.missingSkills
+        );
+      }
+
+      const { rowCount } = await client.query(
+        `INSERT INTO matches (
+            job_id, profile_id, overall, technical, experience, education, location,
+            language, ai_tools, recommendation, breakdown, strong_matches,
+            partial_matches, missing_skills
+         ) VALUES ${tuples.join(',')}
+         ON CONFLICT (job_id, profile_id) DO UPDATE SET
+            overall = EXCLUDED.overall, technical = EXCLUDED.technical,
+            experience = EXCLUDED.experience, education = EXCLUDED.education,
+            location = EXCLUDED.location, language = EXCLUDED.language,
+            ai_tools = EXCLUDED.ai_tools, recommendation = EXCLUDED.recommendation,
+            breakdown = EXCLUDED.breakdown, strong_matches = EXCLUDED.strong_matches,
+            partial_matches = EXCLUDED.partial_matches, missing_skills = EXCLUDED.missing_skills,
+            scored_at = now()`,
+        values
+      );
+      written += rowCount ?? 0;
+    }
+  });
+
+  return written;
 }
 
 /**

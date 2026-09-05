@@ -52,7 +52,7 @@ async function main() {
   }
 
   const profile = CandidateProfile.parse(
-    JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v3.json'), 'utf8'))
+    JSON.parse(readFileSync(join(here, '..', 'data', 'profile.sample.v3.json'), 'utf8'))
   );
   console.log(`profile v${profile.version}: ${profile.totalYears}y, ${profile.skills.length} evidenced skills\n`);
 

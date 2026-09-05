@@ -28,7 +28,7 @@ import type { NormalisedJob } from '../src/lib/jobs/types.ts';
 // evidenced but the skills list never captured (stored procedures and triggers,
 // production support, root cause analysis, SDLC, requirements gathering,
 // stakeholder management, data quality, forecasting).
-const profile = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.v6.json', 'utf8')));
+const profile = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.sample.v6.json', 'utf8')));
 
 const dbaJob = (description: string, title = 'Senior Oracle Database Administrator'): NormalisedJob => ({
   sourceSlug: 'test',
@@ -365,7 +365,7 @@ test('REGRESSION: one BI tool is not another', () => {
   //
   // This test reads v7 directly: the fixture profile above is v6, which holds no
   // BI tool at all and so cannot exhibit the bug.
-  const v7 = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.v7.json', 'utf8')));
+  const v7 = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.sample.v7.json', 'utf8')));
   const job = dbaJob(`Requirements:
 - Tableau dashboard development
 - Looker and LookML

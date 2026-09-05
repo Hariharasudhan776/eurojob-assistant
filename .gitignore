@@ -16,3 +16,10 @@ next-env.d.ts
 
 # Local experiment scripts and their output (comparison runs, probes).
 .scratch/
+
+# The real profile and its analysis: name, phone, LinkedIn URL and a full
+# structured employment history. The repo is public; these stay local.
+# data/profile.sample.*.json are anonymised fixtures derived from them, and are
+# what the tests and scripts read.
+data/profile.v*.json
+PROFILE-ANALYSIS.md

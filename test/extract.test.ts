@@ -34,7 +34,7 @@ test('an empty or oversized file is refused before anything else happens', async
 test('a file that yields almost no text is reported, not passed on', async () => {
   // This is the scanned-CV case: it parses, and produces nothing usable. Left
   // unchecked it reaches the model, which will invent a career to fill the gap.
-  const result = await extractCvText('cv.txt', bytes('Hariharasudhan'));
+  const result = await extractCvText('cv.txt', bytes('Alex Kumar'));
   assert.ok(result.errors.length > 0, 'a near-empty read must be an error');
   assert.match(result.errors[0] ?? '', /scanned|pixels/i);
 });
@@ -50,7 +50,7 @@ test('the file header decides the type, not the extension', async () => {
 
 test('plain text survives extraction intact', async () => {
   const cv = [
-    'HARIHARASUDHAN',
+    'ALEX KUMAR',
     'Software Developer',
     '',
     'EXPERIENCE',

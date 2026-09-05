@@ -1,0 +1,690 @@
+{
+  "version": 6,
+  "name": "Alex Kumar",
+  "headline": "Software Developer | Backend & Database Engineering | Oracle · PostgreSQL · PL/SQL · AI-assisted development",
+  "email": "alex.kumar@example.com",
+  "phone": "+00 00000 00000",
+  "location": "Valletta, Malta",
+  "links": {
+    "linkedin": "linkedin.com/in/example-candidate",
+    "github": "github.com/Alex Kumar776"
+  },
+  "summary": "Software Developer with 5+ years of experience designing, building, and supporting enterprise business applications across construction, manufacturing, pharmacy, retail, and government domains. Oracle Certified Professional with deep backend and database engineering expertise — Oracle (PL/SQL and DBA), PostgreSQL, complex SQL, performance tuning, and large-scale data migration — combined with full-stack delivery experience in JavaScript, Node.js, and Electron.js. Works fluently with modern AI development tools (Claude, Copilot, Gemini, ChatGPT) for code generation, debugging and optimisation, and has built a working LLM-backed calling agent for supplier price enquiries.",
+  "totalYears": 5.2,
+  "experience": [
+    {
+      "company": "Northwind Construction Group",
+      "title": "Software Developer",
+      "location": "Valletta, Malta",
+      "startDate": "2025-06",
+      "endDate": null,
+      "current": true,
+      "context": "Construction, pharmacy and warehouse group",
+      "bullets": [
+        "Own end-to-end development, enhancement, and production support of the group's core enterprise application platform (Corevia ERP), serving 600+ daily users across construction, hospital, pharmacy, and warehouse operations at multiple sites.",
+        "Rebuilt the Cost Reporting module from the ground up — traced and eliminated root-cause data inconsistencies spanning 15+ years of historical cost data, corrected them at the source function level, and delivered a multi-scenario cost engine now running in live production.",
+        "Redesigned the Cost Reporting module's rate logic — replaced a flat-average rate model with batch-based costing, retroactively reconstructing virtual batches across 15+ years of historical data that had no native batch tracking, so reported costs reflect real batch-level rates rather than averages.",
+        "Planned and executed a large-scale split and migration of 15+ years of historical transactional data across construction, pharmacy, and warehouse modules in Oracle Database, achieving zero data loss with full referential integrity and no interruption to business operations.",
+        "Administer 5+ Oracle Database instances as DBA across the group operations in Oman, India, the UAE and Saudi Arabia — schema and user management, backup and recovery strategy, performance tuning, and server configuration.",
+        "Develop and optimise complex SQL and PL/SQL (stored procedures, functions, triggers) that power inventory, QA/QC, cost, and finance reporting.",
+        "Delivered inventory and warehouse functionality covering goods receipt, inter-site stock transfers, stock adjustments, and operational reporting.",
+        "Implemented QA/QC quality-checkpoint workflows embedded directly into the construction project lifecycle.",
+        "Partner directly with finance and operations stakeholders to translate business requirements into shipped features.",
+        "Hosted and configured Corevia ERP on IIS for internet-based access, serving 600+ daily users in the Oman operation.",
+        "Primary support contact for 100+ users daily across HSE, Finance, Procurement and QA/QC teams — resolving ERP issues and translating each team’s workflow needs into system improvements."
+      ],
+      "skills": [
+        "oracle",
+        "plsql",
+        "sql",
+        "oracle-dba",
+        "performance-tuning",
+        "backup-recovery",
+        "data-migration",
+        "erp",
+        "axpert",
+        "inventory",
+        "construction-domain",
+        "qaqc",
+        "finance-domain",
+        "cost-reporting",
+        "reporting",
+        "pharma-domain"
+      ]
+    },
+    {
+      "company": "Meridian Software Services",
+      "title": "Software Developer",
+      "location": "Lisbon, Portugal",
+      "startDate": "2024-04",
+      "endDate": "2025-05",
+      "current": false,
+      "context": "ODC & Product Development team, enterprise clients across India and Oman",
+      "bullets": [
+        "Built enterprise application modules and database backends for multiple concurrent client engagements across India and Oman.",
+        "CMIS — a state government information system: delivered 6+ production modules including Project Monitoring, Budget Announcements, Cabinet Decisions, Recruitment, CM Announcements, and Policy Commitments.",
+        "Designed the Project Monitoring module to track timelines, budgets, and completion status, with automated escalation alerts routed to district officers and the Chief Minister's Office.",
+        "Automated weekly timesheet reporting with a custom HTML/SQL reporting function.",
+        "a beverage manufacturer: designed and implemented the EAL Process & Dispatch module with integrated database reporting for excise compliance.",
+        "Provided offshore delivery-centre support to two offshore client accounts: database troubleshooting, query performance optimisation, and production uptime management."
+      ],
+      "skills": [
+        "oracle",
+        "plsql",
+        "sql",
+        "erp",
+        "axpert",
+        "egov",
+        "reporting",
+        "performance-tuning",
+        "html"
+      ]
+    },
+    {
+      "company": "RetailForge",
+      "title": "Associate Software Developer",
+      "location": "Lisbon, Portugal",
+      "startDate": "2022-10",
+      "endDate": "2023-11",
+      "current": false,
+      "context": "Retail technology products",
+      "bullets": [
+        "Built a full-stack Point of Sale (POS) desktop application using Electron.js, Node.js, and PostgreSQL, featuring barcode scanning, split invoicing, and real-time inventory tracking — deployed to live retail stores.",
+        "Designed and maintained PostgreSQL schemas and optimised queries, indexes, and stored procedures to keep reporting responsive as transaction volume grew.",
+        "Developed sales-forecasting logic that improved demand-prediction accuracy for retail clients."
+      ],
+      "skills": [
+        "postgresql",
+        "sql",
+        "javascript",
+        "nodejs",
+        "electron",
+        "pos",
+        "inventory",
+        "performance-tuning",
+        "data-modelling",
+        "html",
+        "css"
+      ]
+    },
+    {
+      "company": "Bluepoint Technologies",
+      "title": "Software Trainee — Database & Application Development",
+      "location": "Lisbon, Portugal",
+      "startDate": "2021-01",
+      "endDate": "2022-09",
+      "current": false,
+      "context": "",
+      "bullets": [
+        "Built production foundations in Oracle and PostgreSQL: data migration, server configuration, query debugging, and database tuning on live client systems.",
+        "Supported senior engineers on development and maintenance tasks, progressing from guided work to independently owned deliverables."
+      ],
+      "skills": [
+        "oracle",
+        "postgresql",
+        "sql",
+        "data-migration",
+        "performance-tuning"
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "name": "Oracle Database",
+      "canonical": "oracle",
+      "category": "database",
+      "years": 5.2,
+      "level": "expert",
+      "evidence": "Administered as DBA at Northwind; used at Meridian and Bluepoint. Oracle Certified Professional (2022)."
+    },
+    {
+      "name": "PL/SQL",
+      "canonical": "plsql",
+      "category": "language",
+      "years": 4.5,
+      "level": "expert",
+      "evidence": "Northwind: stored procedures, functions and triggers powering inventory, QA/QC, cost and finance reporting; rebuilt the cost engine at function level."
+    },
+    {
+      "name": "SQL",
+      "canonical": "sql",
+      "category": "language",
+      "years": 5.2,
+      "level": "expert",
+      "evidence": "Complex SQL development across all four roles."
+    },
+    {
+      "name": "Oracle DBA",
+      "canonical": "oracle-dba",
+      "category": "database_admin",
+      "years": 1.2,
+      "level": "strong",
+      "evidence": "Northwind: schema and user management, backup and recovery strategy, performance tuning, server configuration on the production database. Administers 5+ Oracle Database instances across the group operations in Oman, India, the UAE and Saudi Arabia, covering the construction, hospital, pharmacy and warehouse business units (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Performance tuning",
+      "canonical": "performance-tuning",
+      "category": "database_admin",
+      "years": 4,
+      "level": "strong",
+      "evidence": "Query performance optimisation at Meridian (an offshore client, a second offshore client), PostgreSQL index/query tuning at RetailForge, tuning at Northwind."
+    },
+    {
+      "name": "Backup & recovery",
+      "canonical": "backup-recovery",
+      "category": "database_admin",
+      "years": 1.2,
+      "level": "working",
+      "evidence": "Northwind: owns backup and recovery strategy for the production Oracle database."
+    },
+    {
+      "name": "Data migration",
+      "canonical": "data-migration",
+      "category": "database_admin",
+      "years": 3,
+      "level": "strong",
+      "evidence": "Northwind: split and migrated 15+ years of transactional data across three modules with zero data loss. Also data migration at Bluepoint."
+    },
+    {
+      "name": "PostgreSQL",
+      "canonical": "postgresql",
+      "category": "database",
+      "years": 3,
+      "level": "strong",
+      "evidence": "RetailForge: designed and maintained schemas, optimised queries, indexes and stored procedures. Also used at Bluepoint."
+    },
+    {
+      "name": "Data modelling",
+      "canonical": "data-modelling",
+      "category": "database_admin",
+      "years": 3,
+      "level": "strong",
+      "evidence": "Schema design at RetailForge; module data design at Meridian and Northwind."
+    },
+    {
+      "name": "JavaScript",
+      "canonical": "javascript",
+      "category": "language",
+      "years": 1.2,
+      "level": "working",
+      "evidence": "RetailForge: built the POS desktop application front end in Electron.js."
+    },
+    {
+      "name": "Node.js",
+      "canonical": "nodejs",
+      "category": "framework",
+      "years": 1.2,
+      "level": "working",
+      "evidence": "RetailForge: Electron.js + Node.js POS application backed by PostgreSQL."
+    },
+    {
+      "name": "Electron.js",
+      "canonical": "electron",
+      "category": "framework",
+      "years": 1.2,
+      "level": "working",
+      "evidence": "RetailForge: full-stack POS desktop application deployed to live retail stores."
+    },
+    {
+      "name": "HTML",
+      "canonical": "html",
+      "category": "language",
+      "years": 2,
+      "level": "working",
+      "evidence": "Listed on resume; used for the weekly timesheet reporting function at Meridian and the POS UI at RetailForge."
+    },
+    {
+      "name": "CSS",
+      "canonical": "css",
+      "category": "language",
+      "years": 1.2,
+      "level": "familiar",
+      "evidence": "POS desktop application UI at RetailForge."
+    },
+    {
+      "name": "C",
+      "canonical": "c",
+      "category": "language",
+      "years": null,
+      "level": "familiar",
+      "evidence": "Listed on resume from BSc Computer Science coursework; no professional use stated."
+    },
+    {
+      "name": "C++",
+      "canonical": "cpp",
+      "category": "language",
+      "years": null,
+      "level": "familiar",
+      "evidence": "Listed on resume from BSc Computer Science coursework; no professional use stated."
+    },
+    {
+      "name": "ERP systems",
+      "canonical": "erp",
+      "category": "erp",
+      "years": 2.5,
+      "level": "strong",
+      "evidence": "Full lifecycle ERP work at Northwind and Meridian: module development, customisation, data migration, UAT and production support. 600+ daily users on the Oman ERP; primary support contact for 100+ users daily (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Corevia ERP",
+      "canonical": "axpert",
+      "category": "erp",
+      "years": 2.5,
+      "level": "strong",
+      "evidence": "Corevia 10.9 development and support at Northwind and Meridian. Hosted and configured on IIS for internet-based access; 600+ daily users in the Oman operation (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Inventory & warehouse management",
+      "canonical": "inventory",
+      "category": "domain",
+      "years": 2.5,
+      "level": "strong",
+      "evidence": "Northwind: goods receipt, inter-site transfers, stock adjustments. RetailForge: real-time inventory tracking in the POS."
+    },
+    {
+      "name": "Construction project systems",
+      "canonical": "construction-domain",
+      "category": "domain",
+      "years": 1.2,
+      "level": "strong",
+      "evidence": "Northwind: construction cost reporting and QA/QC workflows embedded in the project lifecycle."
+    },
+    {
+      "name": "Cost reporting & controlling",
+      "canonical": "cost-reporting",
+      "category": "domain",
+      "years": 1.2,
+      "level": "strong",
+      "evidence": "Northwind: rebuilt the multi-scenario cost engine now in live production. Rate logic redesigned from a flat-average model to batch-based costing, so reported costs reflect real batch-level rates rather than averages (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "QA/QC processes",
+      "canonical": "qaqc",
+      "category": "domain",
+      "years": 1.2,
+      "level": "working",
+      "evidence": "Northwind: implemented quality-checkpoint workflows in the construction project lifecycle."
+    },
+    {
+      "name": "Finance (AP/AR, journals)",
+      "canonical": "finance-domain",
+      "category": "domain",
+      "years": 1.2,
+      "level": "working",
+      "evidence": "Northwind: supports journal entries, accounts payable/receivable and financial reporting issues."
+    },
+    {
+      "name": "Business reporting",
+      "canonical": "reporting",
+      "category": "domain",
+      "years": 4,
+      "level": "strong",
+      "evidence": "Reporting development across Northwind, Meridian (weekly timesheet automation) and RetailForge (sales reporting)."
+    },
+    {
+      "name": "Pharmacy systems",
+      "canonical": "pharma-domain",
+      "category": "domain",
+      "years": 1.2,
+      "level": "familiar",
+      "evidence": "Northwind: supports the pharmacy module of the group ERP."
+    },
+    {
+      "name": "Point of sale",
+      "canonical": "pos",
+      "category": "domain",
+      "years": 1.2,
+      "level": "strong",
+      "evidence": "RetailForge: built a full POS system with barcode scanning and split invoicing."
+    },
+    {
+      "name": "e-Governance",
+      "canonical": "egov",
+      "category": "domain",
+      "years": 1.1,
+      "level": "working",
+      "evidence": "Meridian: 6+ modules for the Chief Minister Information System, a state government."
+    },
+    {
+      "name": "Oracle SQL Developer",
+      "canonical": "sql-developer",
+      "category": "tool",
+      "years": 5,
+      "level": "strong",
+      "evidence": "Listed on resume as a primary Oracle development tool."
+    },
+    {
+      "name": "TOAD",
+      "canonical": "toad",
+      "category": "tool",
+      "years": null,
+      "level": "working",
+      "evidence": "Listed on resume under tools."
+    },
+    {
+      "name": "DBeaver",
+      "canonical": "dbeaver",
+      "category": "tool",
+      "years": null,
+      "level": "working",
+      "evidence": "Listed on resume under tools."
+    },
+    {
+      "name": "pgAdmin",
+      "canonical": "pgadmin",
+      "category": "tool",
+      "years": 3,
+      "level": "working",
+      "evidence": "Listed on resume; used with PostgreSQL at RetailForge and Bluepoint."
+    },
+    {
+      "name": "Postman",
+      "canonical": "postman",
+      "category": "tool",
+      "years": null,
+      "level": "familiar",
+      "evidence": "Listed on resume under tools (API testing)."
+    },
+    {
+      "name": "Git",
+      "canonical": "git",
+      "category": "tool",
+      "years": 2,
+      "level": "working",
+      "evidence": "Public repositories at github.com/Alex Kumar776."
+    },
+    {
+      "name": "Linux (Ubuntu)",
+      "canonical": "linux",
+      "category": "os",
+      "years": 3,
+      "level": "working",
+      "evidence": "Listed on resume under operating systems; server configuration work at Bluepoint and Northwind."
+    },
+    {
+      "name": "Windows Server",
+      "canonical": "windows-server",
+      "category": "os",
+      "years": 3,
+      "level": "working",
+      "evidence": "Listed on resume; Oracle server configuration at Northwind. Configured IIS to host the ERP for internet-based access (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Generative AI tools",
+      "canonical": "generative-ai",
+      "category": "ai",
+      "years": 2,
+      "level": "strong",
+      "evidence": "Confirmed by the candidate (2026-08-19). Daily working use of multiple LLMs across providers - Claude, GitHub Copilot, Gemini, ChatGPT, Kimi and DeepSeek."
+    },
+    {
+      "name": "AI-assisted development",
+      "canonical": "ai-assisted-dev",
+      "category": "ai",
+      "years": 2,
+      "level": "strong",
+      "evidence": "Confirmed by the candidate (2026-08-19). Uses AI assistants for writing code, debugging, enhancement and optimisation as part of normal development work."
+    },
+    {
+      "name": "LLM application development",
+      "canonical": "llm-integration",
+      "category": "ai",
+      "years": 1,
+      "level": "working",
+      "evidence": "Confirmed by the candidate (2026-08-19). Built an AI calling agent that phones previous suppliers to enquire about prices for requested items - a working LLM-backed application, not tool usage."
+    },
+    {
+      "name": "Prompt engineering",
+      "canonical": "prompt-engineering",
+      "category": "ai",
+      "years": 1,
+      "level": "working",
+      "evidence": "Confirmed by the candidate (2026-08-19). Implied by building the AI calling agent and by routine multi-model use; the agent required designed and iterated prompts to work."
+    },
+    {
+      "name": "AI productivity tooling",
+      "canonical": "ai-productivity",
+      "category": "ai",
+      "years": 2,
+      "level": "strong",
+      "evidence": "Confirmed by the candidate (2026-08-19). Uses AI tools routinely to speed up development, troubleshooting and analysis."
+    },
+    {
+      "name": "Python",
+      "canonical": "python",
+      "category": "language",
+      "years": 1,
+      "level": "familiar",
+      "evidence": "Confirmed by the candidate (2026-08-19). Used to build the AI calling agent (private repository ai-calling-agent)."
+    },
+    {
+      "name": "REST API integration",
+      "canonical": "rest-api",
+      "category": "framework",
+      "years": null,
+      "level": "familiar",
+      "evidence": "Inferred from Postman being listed on the resume as an API testing tool, and from the Electron/Node POS work. Weakest claim in the profile: do not lead with it."
+    },
+    {
+      "name": "Agile / Scrum",
+      "canonical": "agile",
+      "category": "soft",
+      "years": null,
+      "level": "familiar",
+      "evidence": "Sprint-based delivery across the ODC team at Meridian and multi-client engagements. Not certified; do not claim Scrum Master."
+    },
+    {
+      "name": "Stored procedures & triggers",
+      "canonical": "stored-procedures",
+      "category": "database_admin",
+      "years": 4.5,
+      "level": "expert",
+      "evidence": "Northwind: develops and optimises complex SQL and PL/SQL (stored procedures, functions, triggers) powering inventory, QA/QC, cost and finance reporting. RetailForge: PostgreSQL stored procedures maintained to keep reporting responsive as transaction volume grew."
+    },
+    {
+      "name": "Production & application support",
+      "canonical": "prod-support",
+      "category": "soft",
+      "years": 2.5,
+      "level": "strong",
+      "evidence": "Northwind: owns end-to-end development, enhancement and production support of the group ERP used daily across construction, pharmacy and warehouse operations. Meridian: production uptime management for an offshore client and a second offshore client. Primary support contact for 100+ users daily across HSE, Finance, Procurement and QA/QC teams, resolving ERP issues day to day (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Root cause analysis & troubleshooting",
+      "canonical": "rca",
+      "category": "soft",
+      "years": 3,
+      "level": "strong",
+      "evidence": "Northwind: traced and eliminated root-cause data inconsistencies spanning 15+ years of historical cost data and corrected them at the source function. Meridian: database troubleshooting for offshore delivery-centre clients."
+    },
+    {
+      "name": "Software development lifecycle",
+      "canonical": "sdlc",
+      "category": "soft",
+      "years": 5.2,
+      "level": "strong",
+      "evidence": "Northwind: owns end-to-end development, enhancement and production support of the core enterprise platform. Full lifecycle ERP work across Northwind and Meridian: module development, customisation, data migration and support."
+    },
+    {
+      "name": "Requirements gathering & analysis",
+      "canonical": "requirements-analysis",
+      "category": "soft",
+      "years": 2.5,
+      "level": "working",
+      "evidence": "Northwind: partners directly with finance and operations stakeholders to translate business requirements into shipped features. Meridian: built modules to client specification across multiple concurrent engagements. Translates each team's workflow needs into system improvements for HSE, Finance, Procurement and QA/QC (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Stakeholder management",
+      "canonical": "stakeholders",
+      "category": "soft",
+      "years": 2.5,
+      "level": "working",
+      "evidence": "Northwind: works directly with finance and operations stakeholders. Meridian: delivered for enterprise and government clients including the a state government, an offshore client and a beverage manufacturer. Works directly with HSE, Finance, Procurement and QA/QC teams as their primary support contact (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Data quality & cleansing",
+      "canonical": "data-quality",
+      "category": "database_admin",
+      "years": 3,
+      "level": "strong",
+      "evidence": "Northwind: identified and corrected data inconsistencies across 15+ years of historical cost data at source, and executed a split and migration of 15+ years of transactional data with zero data loss. Retroactively reconstructed virtual batches across 15+ years of historical cost data that had no native batch tracking (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Forecasting & demand prediction",
+      "canonical": "forecasting",
+      "category": "domain",
+      "years": 1.2,
+      "level": "familiar",
+      "evidence": "RetailForge: developed sales-forecasting logic that improved demand-prediction accuracy for retail clients."
+    },
+    {
+      "name": "IIS (Internet Information Services)",
+      "canonical": "iis",
+      "category": "tool",
+      "years": null,
+      "level": "working",
+      "evidence": "Northwind: hosted and configured Corevia ERP on IIS for internet-based access, serving 600+ daily users in the Oman operation (stated by the candidate, 2026-08-28)."
+    },
+    {
+      "name": "Batch-based costing",
+      "canonical": "batch-costing",
+      "category": "domain",
+      "years": null,
+      "level": "strong",
+      "evidence": "Northwind: redesigned the Cost Reporting module's rate logic, replacing a flat-average rate model with batch-based costing and retroactively reconstructing virtual batches across 15+ years of historical data that had no native batch tracking (stated by the candidate, 2026-08-28)."
+    }
+  ],
+  "projects": [
+    {
+      "name": "Cost Reporting Engine",
+      "period": "2025",
+      "stack": [
+        "Oracle",
+        "PL/SQL",
+        "Corevia 10.9"
+      ],
+      "summary": "Re-engineered an inaccurate multi-scenario cost calculation across 15+ years of construction cost data; now the production source of truth for project cost reporting.",
+      "url": null
+    },
+    {
+      "name": "Enterprise Data Split & Migration",
+      "period": "2025",
+      "stack": [
+        "Oracle Database"
+      ],
+      "summary": "Split and migrated 15+ years of live transactional data across three business modules with zero data loss and no downtime.",
+      "url": null
+    },
+    {
+      "name": "CMIS — Chief Minister Information System",
+      "period": "2024–2025",
+      "stack": [
+        "Corevia",
+        "SQL",
+        "HTML"
+      ],
+      "summary": "Delivered 6+ e-governance modules with automated escalation alerts for overdue state projects.",
+      "url": null
+    },
+    {
+      "name": "Retail POS System",
+      "period": "2022–2023",
+      "stack": [
+        "Electron.js",
+        "Node.js",
+        "PostgreSQL"
+      ],
+      "summary": "Full-stack desktop POS with barcode scanning, split invoicing, real-time inventory and sales reporting.",
+      "url": null
+    },
+    {
+      "name": "pg-perf-lab",
+      "period": "2026",
+      "stack": [
+        "PostgreSQL",
+        "Node.js",
+        "JavaScript"
+      ],
+      "summary": "Eight PostgreSQL performance problems with harness-generated before/after EXPLAIN ANALYZE evidence for each fix.",
+      "url": "https://github.com/Alex Kumar776/pg-perf-lab"
+    },
+    {
+      "name": "pos-desktop",
+      "period": "2026",
+      "stack": [
+        "Electron.js",
+        "Node.js",
+        "PostgreSQL"
+      ],
+      "summary": "Point-of-sale till with integer-minor-unit money handling, an append-only stock ledger, and 55 automated tests including database concurrency cases.",
+      "url": "https://github.com/Alex Kumar776/pos-desktop"
+    },
+    {
+      "name": "AI Calling Agent — supplier price enquiry",
+      "period": "2026",
+      "stack": [
+        "Python",
+        "LLM API",
+        "Voice/telephony"
+      ],
+      "summary": "Autonomous calling agent that contacts previous suppliers to request current prices for requested items, removing a manual procurement phone-round.",
+      "url": null
+    }
+  ],
+  "education": [
+    {
+      "qualification": "B.Sc. Computer Science",
+      "institution": "Sri Vidya College of Arts & Science, Tamil Nadu, India",
+      "startYear": 2017,
+      "endYear": 2020,
+      "result": "69.18% (First Class)",
+      "eqfLevel": 6
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Oracle Certified Professional (OCP)",
+      "issuer": "Oracle",
+      "date": "2022-03"
+    }
+  ],
+  "languages": [
+    {
+      "language": "English",
+      "cefr": null,
+      "description": "Professional working proficiency"
+    },
+    {
+      "language": "Tamil",
+      "cefr": "native",
+      "description": "Native"
+    },
+    {
+      "language": "Malayalam",
+      "cefr": null,
+      "description": "Conversational"
+    },
+    {
+      "language": "Kannada",
+      "cefr": null,
+      "description": "Conversational"
+    }
+  ],
+  "employmentGaps": [
+    {
+      "from": "2023-11",
+      "to": "2024-04",
+      "months": 4,
+      "explanation": "The RetailForge IT team left to start a new company during this period. Work continued informally but no formal employment certificate was issued, so it is deliberately not claimed as employment on the resume.",
+      "verified": false,
+      "guidance": "Say this plainly if asked. Do not list it as a role: an employment claim with no documentation fails background checks."
+    }
+  ],
+  "workAuthorisation": {
+    "euCitizen": false,
+    "euWorkPermit": false,
+    "needsSponsorship": true,
+    "currentCountry": "OM",
+    "notes": "Indian national currently working in Oman. Requires visa sponsorship / EU Blue Card for European roles. UNVERIFIED: confirm before relying on this for filtering."
+  }
+}

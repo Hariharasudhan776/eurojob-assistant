@@ -8,7 +8,7 @@ import { isNegatedContext, verifyClaims, verifyProvenance } from '../src/lib/ai/
 
 const here = dirname(fileURLToPath(import.meta.url));
 const profile = CandidateProfile.parse(
-  JSON.parse(readFileSync(join(here, '..', 'data', 'profile.v3.json'), 'utf8'))
+  JSON.parse(readFileSync(join(here, '..', 'data', 'profile.sample.v3.json'), 'utf8'))
 );
 
 test('an invented technology is blocked', () => {

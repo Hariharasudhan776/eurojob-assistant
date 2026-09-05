@@ -6,6 +6,7 @@ import { AdzunaSource } from './sources/adzuna.ts';
 import { TheMuseSource } from './sources/themuse.ts';
 import { JobicySource } from './sources/jobicy.ts';
 import { AtsSource } from './sources/ats.ts';
+import { JoobleSource } from './sources/jooble.ts';
 
 /**
  * Source registry. Adding a source means adding one line here (spec §5) --
@@ -22,6 +23,10 @@ import { AtsSource } from './sources/ats.ts';
  * ATS: no key, full descriptions, the EMPLOYERS' OWN boards (Greenhouse, Lever,
  * Ashby, SmartRecruiters). Upstream of every aggregator here, and the only
  * source where a vacancy disappearing is real evidence that it closed.
+ * Jooble: free key, 70+ countries, SNIPPETS only. Here purely for reach --
+ * Czechia, Portugal, the Nordics and the Gulf were measured at or near zero
+ * across every other source, and no key-free source covers them. Its rows rank
+ * below better-described ones by design; the point is that they exist at all.
  */
 export const SOURCES: JobSource[] = [
   new ArbeitnowSource(),
@@ -29,6 +34,7 @@ export const SOURCES: JobSource[] = [
   new TheMuseSource(),
   new JobicySource(),
   new AtsSource(),
+  new JoobleSource(),
 ];
 
 export interface CollectionReport {

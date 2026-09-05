@@ -38,6 +38,13 @@ import type { JobQuery } from './jobs/types.ts';
  */
 export const DEFAULT_TARGET_COUNTRIES = [
   'DE', 'NL', 'SE', 'FI', 'DK', 'NO', 'IE', 'BE', 'AT', 'FR', 'CH', 'LU', 'PL',
+  // Czechia and Portugal, added 2026-09-05 because he asked for Czech postings
+  // and the feed held ZERO -- which read as a source problem and was not one.
+  // No source had ever been asked for them: this list is what steers a source's
+  // country budget, and neither code was in it. Prague and Lisbon are also the
+  // two European tech markets with the lowest cost of entry for a non-EU
+  // candidate, which is why they belong here rather than only in a filter.
+  'CZ', 'PT',
   // India and the Gulf. Europe remains the priority and is unaffected -- the
   // location component checks membership of this list, so adding markets lifts
   // those postings without lowering any European one. They are here because

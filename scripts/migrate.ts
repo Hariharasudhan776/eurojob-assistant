@@ -16,7 +16,15 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Client } from 'pg';
 import { getPool } from '../src/lib/db/pool.ts';
-import { backfillCountries, backfillRoleCategories, ensureUser, ensureSources, promoteToAdmin, saveProfile } from '../src/lib/db/repo.ts';
+import {
+  backfillCountries,
+  backfillSponsorship,
+  backfillRoleCategories,
+  ensureUser,
+  ensureSources,
+  promoteToAdmin,
+  saveProfile,
+} from '../src/lib/db/repo.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import { SOURCES } from '../src/lib/jobs/registry.ts';
 
@@ -100,6 +108,14 @@ async function main() {
   // there is nothing to do -- it only reads rows whose country is already NULL.
   const places = await backfillCountries();
   console.log(`countries: ${places.placed} placed of ${places.scanned} unplaced jobs`);
+
+  // Same reason, and it reads every row rather than only the blank ones: this
+  // detector corrects in both directions, and a posting wrongly marked "no" is
+  // the most valuable thing it fixes for a candidate who needs sponsorship.
+  const visas = await backfillSponsorship();
+  console.log(
+    `sponsorship: ${visas.sponsorship} changed, relocation: ${visas.relocation} changed, of ${visas.scanned} jobs`
+  );
 
   await pool.end();
   console.log('\nready. next: npm run sync');

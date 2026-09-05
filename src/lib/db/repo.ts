@@ -4,7 +4,7 @@ import type { MatchResult } from '../match/score.ts';
 import { classifyRole } from '../match/roles.ts';
 import { extractSkills } from '../match/taxonomy.ts';
 import { staleClause } from '../jobs/lifecycle.ts';
-import { parseLocation } from '../jobs/parse.ts';
+import { detectRelocationSupport, detectVisaSponsorship, parseLocation } from '../jobs/parse.ts';
 import { geoCountry } from '../jobs/sources/jobicy.ts';
 import type { CandidateProfile } from '../resume/profile.ts';
 
@@ -1161,4 +1161,54 @@ export async function cacheSet(
      ON CONFLICT (kind, cache_key, model) DO UPDATE SET response = EXCLUDED.response`,
     [kind, key, model, JSON.stringify(value), usage.inputTokens, usage.outputTokens]
   );
+}
+
+/**
+ * Re-read visa sponsorship and relocation from stored descriptions.
+ *
+ * A parser improvement does not reach stored rows on its own -- collection
+ * classifies once, at collection time, and `upsertJob` has no reason to revisit
+ * it. That trap already cost this project 592 Arbeitnow rows sitting at
+ * country = NULL straight through the parser change that could place them, so
+ * it gets a backfill from the start rather than after someone notices.
+ *
+ * Unlike `backfillCountries` this reads EVERY job, not only the unclassified
+ * ones, because the detector's corrections run in both directions: postings
+ * wrongly recorded as "no" are the most valuable rows it fixes. n8n's
+ * "We can sponsor visas to Germany; for any other country, you need to have
+ * existing right to work" was being read as a flat refusal, and that is a
+ * sponsoring employer in the candidate's first-choice country.
+ *
+ * Idempotent, and writes only where the answer actually changed.
+ */
+export async function backfillSponsorship(): Promise<{
+  scanned: number;
+  sponsorship: number;
+  relocation: number;
+}> {
+  const { rows } = await getPool().query(
+    `SELECT id, description, visa_sponsorship, relocation_support FROM jobs WHERE description IS NOT NULL`
+  );
+
+  let sponsorship = 0;
+  let relocation = 0;
+  for (const row of rows as {
+    id: number;
+    description: string;
+    visa_sponsorship: string;
+    relocation_support: string;
+  }[]) {
+    const visa = detectVisaSponsorship(row.description);
+    const reloc = detectRelocationSupport(row.description);
+    if (visa === row.visa_sponsorship && reloc === row.relocation_support) continue;
+
+    await getPool().query(
+      'UPDATE jobs SET visa_sponsorship = $2, relocation_support = $3 WHERE id = $1',
+      [row.id, visa, reloc]
+    );
+    if (visa !== row.visa_sponsorship) sponsorship += 1;
+    if (reloc !== row.relocation_support) relocation += 1;
+  }
+
+  return { scanned: rows.length, sponsorship, relocation };
 }

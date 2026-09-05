@@ -249,10 +249,95 @@ export function detectRemote(text: string, tags: string[] = []): RemoteMode {
  * "we cannot sponsor visas" contains the phrase "sponsor visa", so
  * positive-first matching would read it exactly backwards.
  */
+/**
+ * Text that contains the word "sponsor" or "visa" and has nothing to do with
+ * immigration. Stripped BEFORE anything else is read.
+ *
+ * Measured over the live feed, this is the dominant noise source by a wide
+ * margin -- most postings mentioning "sponsor" mean an executive sponsor, a
+ * sponsored lunch, or a sponsorship deal, and "Visa" is also a large employer
+ * whose own adverts say the word forty times without once discussing
+ * immigration. Same discipline as `compensation.ts` disqualifying revenue
+ * sentences: two things share a spelling and only one of them is the subject.
+ */
+const NOT_IMMIGRATION = [
+  /\b(?:executive|deal|program|programme|project|business|customer|technical|senior)\s+sponsors?\b/g,
+  /\bsponsors?\s+(?:and|,)\s*(?:advisers|advisors|borrowers|partners)\b/g,
+  /\bearns?\s+executive\s+sponsorship\b/g,
+  /\bsponsored\s+(?:access|lunch|outings?|events?|local|401k|health\s+benefits)\b/g,
+  /\bsponsorships?\s+(?:deal|campaign|opportunit)/g,
+  /\b(?:act|acting|acts)\s+as\s+(?:an?\s+)?(?:senior\s+)?sponsor\b/g,
+  /\bsponsoring\s+automation\b/g,
+  /\bvisa\s+(?:inc|government\s+solutions|requires\s+at\s+least|will\s+also\s+consider|capabilities|revenue|teams)\b/g,
+  /\bjoin\s+visa\b/g,
+  /\bat\s+visa,/g,
+];
+
+/**
+ * Boilerplate that names the right to work WITHOUT refusing sponsorship.
+ *
+ * "All offers of employment are contingent upon an individual's ability to
+ * secure and maintain the legal right to work" is standard US-employer
+ * language and appears on postings that sponsor perfectly happily -- it says
+ * the offer is conditional on eventually being authorised, not that the
+ * employer will not help you become authorised. Reading it as a refusal would
+ * hide good jobs from exactly the candidate this field exists to serve, which
+ * is the more expensive error of the two.
+ *
+ * Same family as the "Deutschland Ticket" trap in decision §11: the words match
+ * and the meaning does not.
+ */
+const RIGHT_TO_WORK_BOILERPLATE = [
+  /\ball\s+offers?\s+of\s+employment\s+(?:are|is)\s+contingent\b[^.]{0,160}right\s+to\s+work/,
+  /\bability\s+to\s+secure\s+and\s+maintain\s+the\s+legal\s+right\s+to\s+work/,
+  /\bright\s+to\s+work\s+notice\b/,
+  /\bis\s+(?:this\s+)?role\s+eligible\s+for\s+immigration\s+sponsorship\s*\?/,
+  /\bparticipation\s+and\s+right\s+to\s+work\b/,
+];
+
 export function detectVisaSponsorship(text: string): Tristate {
-  const t = text.toLowerCase();
+  let t = text.toLowerCase();
+
+  // Remove the non-immigration senses first, so a posting that says "executive
+  // sponsor" nine times cannot be read as discussing visas at all.
+  for (const re of NOT_IMMIGRATION) t = t.replace(re, ' ');
+
+  // An explicit statement beats everything, including the negatives below: an
+  // employer that writes "we do sponsor visas" has answered the question, even
+  // if the same document also carries a right-to-work clause elsewhere.
+  /**
+   * Every one of these carries a negation guard, and the guard is the point.
+   *
+   * "No visa sponsorship is available for this position" ends in the exact
+   * words "visa sponsorship is available". Without the lookbehind, an Oracle
+   * posting REFUSING sponsorship was read as offering it -- caught by spot-
+   * checking the flips before writing them, which is the only reason it is not
+   * in the database now. Because this block deliberately runs BEFORE the
+   * negative patterns, a false positive here cannot be rescued later: it wins
+   * outright. That is what makes the guards non-optional rather than defensive.
+   */
+  const explicitYes = [
+    /\bwe\s+do\s+sponsor\s+(?:visas?|work\s+permits?)\b/,
+    /\bwe\s+can\s+sponsor\s+(?:visas?|work\s+permits?)\b/,
+    /\bvisa\s+sponsorship\s*:\s*(?:yes|we\s+do)\b/,
+    /(?<!\bnot\s)(?<!\bwithout\s)\bincluding\s+visa\s+sponsorship\b/,
+    /(?<!\bno\s)(?<!\bnot\s)(?<!\bnever\s)\bvisa\s+sponsorship\s+(?:may\s+be|is)\s+available\b/,
+  ];
+  if (explicitYes.some((re) => re.test(t))) return 'yes';
+
+  if (RIGHT_TO_WORK_BOILERPLATE.some((re) => re.test(t))) {
+    // Say nothing rather than guess. The clause is genuinely uninformative.
+    t = t.replace(/\ball\s+offers?\s+of\s+employment[^.]{0,200}\./g, ' ');
+  }
 
   const negative = [
+    /\bcannot\s+support\s+candidates\s+requiring\s+(?:visa\s+)?sponsorship\b/,
+    /\brequires?\s+(?:individuals?|candidates?|you)\s+to\s+have\s+(?:the\s+|a\s+)?(?:valid\s+)?(?:right\s+to\s+work|work\s+permit)\b/,
+    /\byou'?ll\s+need\s+a\s+valid\s+(?:right\s+to\s+work|work\s+permit)\b/,
+    /\bdo\s+not\s+require\s+\w+'?s?\s+sponsorship\s+of\s+a\s+visa\b/,
+    /\bvalid\s+work\s+permit\s+for\s+\w+\s+is\s+required\b/,
+    /\bwe\s+do\s+require\s+you\s+to\s+have\s+a\s+[\w\s]{0,20}work\s+permit\b/,
+    /\bmust\s+be\s+\w+-based\s+with\s+right\s+to\s+work\b/,
     /\b(?:no|not|cannot|can't|unable to|do not|don't|won't|will not)\s+(?:offer\s+|provide\s+|able to\s+)?(?:visa\s+)?spons/,
     /\bwithout\s+(?:visa\s+)?sponsorship\b/,
     /\bsponsorship\s+is\s+not\s+(?:available|offered|provided|possible)\b/,
@@ -275,6 +360,8 @@ export function detectVisaSponsorship(text: string): Tristate {
     /\bwe\s+help\s+with\s+(?:the\s+)?visa\b/,
     /\b(?:blue\s*card|work\s+permit)\s+(?:sponsorship|support)\b/,
     /\bwe\s+assist\s+with\s+visa\b/,
+    /\bwe\s+sponsor\s+visas?\b/,
+    /\bvisa\s+sponsorship\s+(?:for|where)\s+(?:eligible|applicable|qualified)\b/,
   ];
   if (positive.some((re) => re.test(t))) return 'yes';
 
@@ -283,11 +370,21 @@ export function detectVisaSponsorship(text: string): Tristate {
 
 export function detectRelocationSupport(text: string): Tristate {
   const t = text.toLowerCase();
-  if (/\bno\s+relocation\b|\brelocation\s+(?:is\s+)?not\s+(?:available|offered|provided|supported)\b/.test(t)) return 'no';
+  if (
+    /\bno\s+relocation\b|\brelocation\s+(?:is\s+)?not\s+(?:available|offered|provided|supported)\b/.test(t) ||
+    // "Relocation Assistance Provided: No" is a labelled FIELD, not a sentence,
+    // so none of the prose patterns above ever saw it.
+    /\brelocation\s+(?:assistance|support)\s+provided\s*:\s*no\b/.test(t) ||
+    /\brelocation\s+assistance\s+will\s+not\s+be\s+provided\b/.test(t)
+  ) {
+    return 'no';
+  }
   if (
     /\brelocation\s+(?:package|assistance|support|bonus|allowance|budget)\b/.test(t) ||
     /\bwe\s+(?:offer|provide|support|help\s+with)\s+relocation\b/.test(t) ||
-    /\brelocation\s+(?:is\s+)?(?:available|offered|provided|fully\s+covered)\b/.test(t)
+    /\brelocation\s+(?:is\s+)?(?:available|offered|provided|fully\s+covered)\b/.test(t) ||
+    /\brelocation\s+(?:expense\s+coverage|stipend)\b/.test(t) ||
+    /\blet\s+us\s+help\s+you\s+move\b/.test(t)
   ) {
     return 'yes';
   }

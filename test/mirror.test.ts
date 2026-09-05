@@ -332,9 +332,15 @@ test('stored procedures is claimed, because the profile evidences it verbatim', 
 });
 
 test('skills the profile does not evidence are still refused', () => {
-  // The v4 additions came from his own bullets. Excel, Power BI and UAT did not,
-  // so they must remain gaps -- otherwise the additions were fabrication with
-  // extra steps.
+  // The v4 additions came from his own bullets. Excel and UAT did not, so they
+  // must remain gaps -- otherwise the additions were fabrication with extra
+  // steps.
+  //
+  // Power BI USED to be on this list and is deliberately no longer asserted
+  // against: in v7 he stated he builds Power BI dashboards at Northwind for
+  // project and purchase value, so the profile now evidences it and claiming it
+  // is correct. The rule did not change -- the evidence did. Excel and UAT still
+  // have no bullet behind them, and Kubernetes never will without one.
   const { plan } = planFor(`Requirements:
 - Advanced Excel: pivot tables and VLOOKUP
 - Power BI dashboards
@@ -344,6 +350,39 @@ test('skills the profile does not evidence are still refused', () => {
   const printed = plan.mirror.map((e) => e.requirement);
   for (const requirement of ['excel', 'uat', 'kubernetes']) {
     assert.ok(!printed.includes(requirement), `${requirement} must not be claimed`);
+  }
+});
+
+test('REGRESSION: one BI tool is not another', () => {
+  // v7 recorded Power BI, which he genuinely uses at Northwind. `bi-tools` then
+  // carried power bi, tableau, looker and qlik as aliases of ONE canonical, so
+  // a posting demanding Tableau resolved to a canonical he now held, scored as
+  // covered, and printed the word "Tableau" on his resume.
+  //
+  // Same shape as RMAN being an alias of backup-recovery. A specific product
+  // folded into a general one reports a gap as a match, and the resume then
+  // claims a tool he has never opened.
+  //
+  // This test reads v7 directly: the fixture profile above is v6, which holds no
+  // BI tool at all and so cannot exhibit the bug.
+  const v7 = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.v7.json', 'utf8')));
+  const job = dbaJob(`Requirements:
+- Tableau dashboard development
+- Looker and LookML
+- Power BI reporting
+- SQL`, 'BI Developer');
+  const match = scoreJob(v7, job, { preferredCountries: ['DE'] });
+  const plan = buildMirrorPlan(match.requirements.required, match.requirements.preferred, v7);
+
+  const printed = plan.mirror.map((e) => e.requirement);
+  for (const requirement of ['tableau', 'looker']) {
+    assert.ok(!printed.includes(requirement), `${requirement} must not be claimed from Power BI`);
+  }
+  assert.ok(printed.includes('powerbi'), 'Power BI itself should print — he stated it');
+
+  const asked = plan.confirm.map((e) => e.requirement);
+  for (const requirement of ['tableau', 'looker']) {
+    assert.ok(asked.includes(requirement), `${requirement} should be asked about, not silently dropped`);
   }
 });
 

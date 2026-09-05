@@ -80,7 +80,34 @@ export const TAXONOMY: TaxonomyEntry[] = [
     category: 'database_admin',
     aliases: ['performance tuning', 'query optimisation', 'query optimization', 'sql tuning', 'query tuning', 'database tuning', 'indexing'],
   },
-  { canonical: 'backup-recovery', display: 'Backup & Recovery', category: 'database_admin', aliases: ['backup and recovery', 'disaster recovery'] },
+  { canonical: 'backup-recovery', display: 'Backup & Recovery', category: 'database_admin', aliases: ['backup and recovery'] },
+  /**
+   * Disaster recovery is its own line in a job advert, so it is its own entry.
+   *
+   * It used to be an alias of `backup-recovery`, with a comment approving of
+   * that because "a needle must not appear twice". The comment was right about
+   * needles and wrong about this one, and the candidate caught it: postings
+   * list "Disaster Recovery" as a separate skill in their own requirements, and
+   * folding it into another canonical meant the matcher scored it as covered
+   * while the document printed the words "Backup & Recovery" instead. An ATS
+   * searching the literal string "Disaster Recovery" then missed a candidate who
+   * runs one.
+   *
+   * That is the RMAN bug precisely -- the founding bug of this whole file (see
+   * the oracle-rman entry) -- reintroduced under a different name. The rule it
+   * teaches: a term an employer writes on its own line must be able to reach the
+   * page on its own line. Sharing a canonical is what stops that.
+   *
+   * `backup-recovery` keeps the backup half; the two are separately holdable and
+   * closely related, so holding one still speaks well for the other.
+   */
+  {
+    canonical: 'disaster-recovery',
+    display: 'Disaster Recovery',
+    category: 'database_admin',
+    aliases: ['disaster recovery', 'dr plan', 'dr strategy', 'business continuity', 'bcp', 'disaster recovery planning'],
+    related: { 'backup-recovery': 0.8, 'high-availability': 0.5 },
+  },
 
   // --- Oracle DBA tooling, named individually on purpose -------------------
   //
@@ -199,6 +226,22 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'java', display: 'Java', category: 'language', aliases: ['java 8', 'java 11', 'core java'] },
   { canonical: 'csharp', display: 'C#', category: 'language', aliases: ['c#', '.net', 'dotnet', 'asp.net'] },
   { canonical: 'shell', display: 'Shell scripting', category: 'language', aliases: ['bash', 'shell script', 'powershell'] },
+  /**
+   * Scheduled jobs are their own skill, NOT an alias of `shell`.
+   *
+   * Asked whether he wrote shell scripts or scheduled cron jobs for the nightly
+   * RMAN backups, he answered cron -- and only cron. Folding this into `shell`
+   * would have turned one confirmed fact into a second, unasserted one, which is
+   * the exact failure `mirror.ts` exists to prevent. Shell scripting stays a gap
+   * until he says otherwise.
+   */
+  {
+    canonical: 'job-scheduling',
+    display: 'Job scheduling (cron)',
+    category: 'tool',
+    aliases: ['cron', 'crontab', 'cron job', 'cron jobs', 'scheduled job', 'scheduled jobs', 'job scheduling', 'task scheduler', 'batch scheduling'],
+    related: { shell: 0.35, linux: 0.3 },
+  },
 
   // --- erp / business systems ---
   {
@@ -263,7 +306,23 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'dbt', display: 'dbt', category: 'tool', aliases: ['data build tool'] },
   { canonical: 'graphql', display: 'GraphQL', category: 'framework', aliases: [], related: { 'rest-api': 0.4 } },
   { canonical: 'microservices', display: 'Microservices', category: 'framework', aliases: ['microservice architecture'] },
-  { canonical: 'observability', display: 'Observability tooling', category: 'tool', aliases: ['grafana', 'prometheus', 'datadog', 'monitoring and alerting'] },
+  /**
+   * Watching a database is not running an observability stack.
+   *
+   * `observability` aliases Grafana, Prometheus and Datadog. Asked how he knows
+   * an Oracle instance is unhealthy, he described the alert log, tablespace
+   * usage, session counts, wait events and blocking sessions -- native Oracle
+   * diagnostics, and not one of those three products. Recording that as
+   * `observability` would have made a posting demanding Datadog read as
+   * satisfied and printed "Datadog" on his resume: the Power BI/Tableau bug
+   * exactly (see the powerbi entry), caught the same way, by checking the
+   * aliases before adding the skill rather than after.
+   *
+   * So the database-side discipline is its own requirement. He holds
+   * `db-monitoring`; `observability` stays a gap until he names a tool.
+   */
+  { canonical: 'db-monitoring', display: 'Database monitoring & diagnostics', category: 'database_admin', aliases: ['database monitoring', 'alert log', 'tablespace monitoring', 'session monitoring', 'wait events', 'blocking sessions', 'db health check'], related: { 'oracle-dba': 0.5, observability: 0.45, 'performance-tuning': 0.5 } },
+  { canonical: 'observability', display: 'Observability tooling', category: 'tool', aliases: ['grafana', 'prometheus', 'datadog', 'monitoring and alerting'], related: { 'db-monitoring': 0.45 } },
   { canonical: 'exadata', display: 'Oracle Exadata', category: 'database_admin', aliases: [], related: { 'oracle-dba': 0.3 } },
 
   // --- analytics, testing and LLM tooling ----------------------------------
@@ -278,7 +337,30 @@ export const TAXONOMY: TaxonomyEntry[] = [
   //
   // The candidate holds none of these. Adding them lowers some match scores,
   // which is the point: a score that cannot go down is not a measurement.
-  { canonical: 'bi-tools', display: 'BI & dashboarding', category: 'tool', aliases: ['power bi', 'powerbi', 'tableau', 'looker', 'qlik', 'metabase', 'superset'], related: { reporting: 0.5 } },
+  /**
+   * One BI tool is not another, and this entry used to say it was.
+   *
+   * `bi-tools` carried power bi, tableau, looker, qlik, metabase and superset as
+   * aliases of a single canonical. That was harmless while the profile held none
+   * of them. The moment v7 recorded Power BI -- which he actually uses at Al
+   * Adrak -- a posting demanding TABLEAU resolved to a canonical he now holds,
+   * scored as fully covered, and `mirror.ts` printed the word "Tableau" on the
+   * resume. Measured, not theorised: the same for "Looker".
+   *
+   * This is the RMAN bug exactly (see the oracle-rman entry above): a specific
+   * product folded into a general one, so a requirement for the product he does
+   * NOT have reads as satisfied by the one he does. Blind spots always flatter.
+   *
+   * So each product is its own requirement, and `bi-tools` keeps only the
+   * genuinely generic vocabulary. He holds `powerbi` and `bi-tools`; Tableau,
+   * Looker and Qlik are related closely enough to be worth ASKING about and
+   * never close enough to print.
+   */
+  { canonical: 'powerbi', display: 'Power BI', category: 'tool', aliases: ['power bi', 'powerbi', 'microsoft power bi', 'ms power bi'], related: { 'bi-tools': 0.8, reporting: 0.5 } },
+  { canonical: 'bi-tools', display: 'BI & dashboarding', category: 'tool', aliases: ['bi tool', 'bi tools', 'business intelligence', 'dashboarding', 'data visualisation', 'data visualization'], related: { reporting: 0.5 } },
+  { canonical: 'tableau', display: 'Tableau', category: 'tool', aliases: ['tableau'], related: { 'bi-tools': 0.6, powerbi: 0.55 } },
+  { canonical: 'looker', display: 'Looker', category: 'tool', aliases: ['looker', 'lookml'], related: { 'bi-tools': 0.6, powerbi: 0.55 } },
+  { canonical: 'qlik', display: 'Qlik', category: 'tool', aliases: ['qlik', 'qlikview', 'qlik sense'], related: { 'bi-tools': 0.6, powerbi: 0.55 } },
   { canonical: 'pandas', display: 'pandas / numpy', category: 'framework', aliases: ['numpy', 'polars'], related: { python: 0.4 } },
   { canonical: 'statistics', display: 'Statistical analysis', category: 'ai', aliases: ['statistical analysis', 'a/b testing', 'ab testing', 'hypothesis testing', 'regression analysis'] },
   { canonical: 'bigquery', display: 'BigQuery', category: 'database', aliases: ['google bigquery'], related: { 'data-warehouse': 0.6 } },

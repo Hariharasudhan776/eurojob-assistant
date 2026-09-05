@@ -205,7 +205,7 @@ Each button states its cost before you press it.
 
 In the app: **My Profile → upload**. It is validated, saved as the next version, and the feed is re-scored against it.
 
-Locally you can also keep using files: `data/profile.v3.json`, copied to `profile.v4.json`, edited, then `npm run db:migrate`.
+Locally you can also keep using files. `data/profile.sample.v3.json` is a complete worked example — copy it to `data/profile.v4.json`, edit it, then `npm run db:migrate`. `data/profile.v*.json` is gitignored, so your real profile stays on your machine; the `sample` files are anonymised fixtures and are what the tests read.
 
 Versioning is the point: every match records which profile version scored it, so an old result stays explainable against the facts that were true at the time.
 
@@ -246,10 +246,16 @@ Implement `JobSource` in `src/lib/jobs/sources/`, add one line to `src/lib/jobs/
 | Adzuna | free | 21 countries: GB DE NL FR PL AT BE CH IT ES US CA AU NZ ZA SG IN BR MX RU AR | first 500 characters only |
 | The Muse | none (optional) | **Ireland** — Dublin, Cork, Galway — plus the Nordics and the Gulf | full |
 | Jobicy | none | worldwide **remote** | full |
+| ATS boards | none | 72 employers' OWN boards (Greenhouse, Lever, Ashby, SmartRecruiters), 42 countries | full |
+| Jooble | free | 70+ countries incl. the Nordics, the Gulf, Czechia, Portugal | snippet only (~275 chars) |
 
 **The Muse exists to close the Ireland gap.** Adzuna operates no Irish endpoint, and Ireland is the most valuable market for a non-EU English-speaking candidate: the Critical Skills Employment Permit is a real sponsorship route. A search that silently omitted it was omitting the best odds in the feed.
 
 **Jobicy exists to close the remote gap.** Adzuna serves no Gulf country, no Nordic country, no Ireland, no Luxembourg and no Portugal — eleven of the countries in the default target list — and the other two sources reach them thinly. Jobicy does not fix that country by country; it covers the one category where the employer's country is not a visa question at all. For a candidate who needs sponsorship, remote work is not a consolation prize.
+
+**The employers' own boards are upstream of every aggregator.** `sources/ats.ts` reads Greenhouse, Lever, Ashby and SmartRecruiters — the public APIs behind companies' own careers pages. Three properties no aggregator here has: descriptions arrive whole (median 6,386 characters, against Adzuna's 500-character cap); a closed vacancy disappears the same day, because the board *is* the source of truth; and coverage follows the employer rather than an endpoint, reaching 42 countries including three regions Adzuna does not serve at all. Every slug in `ats-boards.ts` was probed against the live API before it shipped — a list of dead slugs fails silently and looks exactly like "no jobs today".
+
+**Jooble is for reach, and its limits are stated on purpose.** It returns a ~275-character snippet, so every row is `descriptionComplete: false` and ranks below a fuller description of the same job — correct, because the point is surfacing a Prague or Riyadh posting that otherwise does not exist in the feed at all. Two things measured on its live API and encoded in the source: its 500 requests are a **lifetime total**, not a daily rate, and no response reports the balance — so an exhausted budget looks exactly like an empty market. And "Czechia" returns zero results where "Czech Republic" returns them, which is why `LOCATION_OVERRIDES` exists.
 
 **Adzuna asks for date order, not relevance order.** This is the single most consequential line in the collector. Adzuna sorts by relevance when `sort_by` is omitted, and relevance is unrelated to recency — measured on the live API, the first relevance-ranked result for this search was 12 days old in Germany and 30 days old in the UK. Reading the first pages of a relevance ranking therefore returns the same settled postings every day and never today's, which is why Adzuna's own (date-ordered) alert emails carried jobs the app had never shown. With `sort_by=date` a daily run is complete by construction.
 
@@ -296,7 +302,7 @@ src/lib/match/score.ts        the six-component scorer
 src/lib/match/rescore.ts      score the shared feed against one user, in batches
 src/lib/jobs/types.ts         the JobSource interface, and the country names
 src/lib/jobs/parse.ts         location, visa, language, experience extraction
-src/lib/jobs/sources/         one file per job board (arbeitnow, adzuna, themuse, jobicy)
+src/lib/jobs/sources/         one file per job board (arbeitnow, adzuna, themuse, jobicy, ats, jooble)
 src/lib/jobs/lifecycle.ts     when a posting stops counting as open, and why not more than that
 src/lib/ai/prompts.ts         prompts, with the truthfulness rule
 src/lib/ai/verify.ts          checks generated text against the profile

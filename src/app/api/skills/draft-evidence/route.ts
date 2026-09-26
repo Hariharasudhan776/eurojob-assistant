@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAiProvider, latestProfile } from '@/lib/db/repo';
 import { requireUserId, UnauthenticatedError } from '@/lib/auth';
 import { aiRuntime } from '@/lib/ai/runtime';
-import { AiClient } from '@/lib/ai/client';
+import { AiClient, providerFrom } from '@/lib/ai/client';
 import { BudgetExceededError } from '@/lib/ai/budget';
 import { findExperience, templateEvidence } from '@/lib/resume/evidence';
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
     // No key for this account's provider? The template still answers -- the flow
     // must not dead-end on a missing key when a mechanical sentence will do.
-    const chosen = (provider === 'gemini' ? 'gemini' : 'claude') as 'gemini' | 'claude';
+    const chosen = providerFrom(provider);
     if (!AiClient.isConfigured(chosen)) {
       return NextResponse.json({
         ok: true,

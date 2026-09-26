@@ -90,7 +90,7 @@ export function AdminPanel({
           Which model your generations (explanations, cover letters, tailored resumes) use. Applies to your account.
         </p>
         <div className="mt-3 flex gap-2">
-          {(['claude', 'gemini'] as const).map((p) => (
+          {(['claude', 'gemini', 'ollama'] as const).map((p) => (
             <button
               key={p}
               onClick={() => act('set_provider', undefined, { provider: p })}
@@ -98,15 +98,20 @@ export function AdminPanel({
               className={`rounded-full px-4 py-2 text-sm font-bold capitalize transition-all disabled:opacity-40 ${
                 current === p ? 'text-white shadow-lg' : 'border border-white/10 text-[var(--color-muted)] hover:text-[var(--color-fg)]'
               }`}
-              style={current === p ? { backgroundImage: p === 'gemini' ? 'var(--grad-blue)' : 'var(--grad-brand)' } : undefined}
+              style={
+                current === p
+                  ? { backgroundImage: p === 'gemini' ? 'var(--grad-blue)' : p === 'ollama' ? 'var(--grad-green)' : 'var(--grad-brand)' }
+                  : undefined
+              }
             >
-              {p === 'claude' ? '◆ Claude' : '✦ Gemini'}
+              {p === 'claude' ? '◆ Claude' : p === 'gemini' ? '✦ Gemini' : '⌂ Ollama'}
             </button>
           ))}
         </div>
         <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-          Currently using <strong className="text-[var(--color-fg)]">{current}</strong>. The matching API key must be set
-          in the environment (<code>ANTHROPIC_API_KEY</code> / <code>GEMINI_API_KEY</code>).
+          Currently using <strong className="text-[var(--color-fg)]">{current}</strong>. Claude and Gemini each need
+          their key in the environment (<code>ANTHROPIC_API_KEY</code> / <code>GEMINI_API_KEY</code>). Ollama needs no
+          key at all — only <code>OLLAMA_BASE_URL</code> pointing at the machine running it, and it bills nobody.
         </p>
       </div>
 
@@ -177,14 +182,20 @@ export function AdminPanel({
                       owner's money, and that has to stay the owner's call. */}
                   <td className="py-2 pr-3">
                     <div className="flex gap-1">
-                      {(['gemini', 'claude'] as const).map((p) => {
+                      {(['ollama', 'gemini', 'claude'] as const).map((p) => {
                         const on = (providerOf[u.id] ?? u.ai_provider) === p;
                         return (
                           <button
                             key={p}
                             onClick={() => act('set_provider', u.id, { provider: p })}
                             disabled={busy !== null || on}
-                            title={p === 'claude' ? 'Better output, billed to you' : 'Free tier, costs you nothing'}
+                            title={
+                              p === 'claude'
+                                ? 'Best output, billed to you'
+                                : p === 'gemini'
+                                  ? "Google's free tier, costs you nothing"
+                                  : 'Your own machine: no key, no bill, no data leaving the network'
+                            }
                             className={`rounded-full px-2 py-0.5 text-[10px] font-bold disabled:opacity-100 ${
                               on
                                 ? p === 'claude'

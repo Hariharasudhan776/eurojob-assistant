@@ -123,9 +123,11 @@ export function JobActions({
       if (!res.ok) throw new Error(body.error ?? 'failed');
       const cost = body.provider === 'gemini'
         ? 'free (Gemini)'
-        : body.fromCache
-          ? '$0 (served from cache)'
-          : `$${(body.costUsd ?? 0).toFixed(4)}`;
+        : body.provider === 'ollama'
+          ? 'free (local model)'
+          : body.fromCache
+            ? '$0 (served from cache)'
+            : `$${(body.costUsd ?? 0).toFixed(4)}`;
       setMessage(`Done — ${cost}.${body.violations?.length ? ` ${body.violations.length} verification note(s).` : ' Verified clean.'}`);
       startTransition(() => router.refresh());
     } catch (err) {

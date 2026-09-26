@@ -4,7 +4,7 @@ import { requireUserId, UnauthenticatedError } from '@/lib/auth';
 import { scoreJob } from '@/lib/match/score';
 import { targetCountriesFor } from '@/lib/match/rescore';
 import { aiRuntime } from '@/lib/ai/runtime';
-import { AiClient } from '@/lib/ai/client';
+import { AiClient, providerFrom } from '@/lib/ai/client';
 import { BudgetExceededError } from '@/lib/ai/budget';
 import { TONES, type Tone } from '@/lib/ai/prompts';
 import type { NormalisedJob } from '@/lib/jobs/types';
@@ -74,7 +74,9 @@ export async function POST(request: Request) {
     ]);
 
     // The key that has to exist depends on which provider this account is set to.
-    const chosen = (provider === 'gemini' ? 'gemini' : 'claude') as 'gemini' | 'claude';
+    // Ollama needs none, so this check passes there and a wrong address surfaces
+    // as a connection error naming the host, which is the more useful failure.
+    const chosen = providerFrom(provider);
     if (!AiClient.isConfigured(chosen)) {
       return NextResponse.json(
         {

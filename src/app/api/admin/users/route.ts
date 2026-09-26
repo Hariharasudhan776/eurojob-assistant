@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     const userId = Number(body.userId);
 
     if (action === 'set_provider') {
-      const provider = body.provider === 'gemini' ? 'gemini' : 'claude';
+      const provider =
+        body.provider === 'gemini' ? 'gemini' : body.provider === 'ollama' ? 'ollama' : 'claude';
       const adminId = await requireAdminId();
 
       /**
@@ -35,7 +36,8 @@ export async function POST(request: Request) {
        * true the moment a second person was approved — and the cost lands
        * entirely on the owner, because there is one `ANTHROPIC_API_KEY` for the
        * whole deployment. Every account left on Claude spends the owner's money
-       * up to its own $2/day cap.
+       * up to its own $2/day cap. `ollama` is the third option and the only one
+       * that bills nobody: it talks to a model server the owner runs.
        *
        * Omitting `userId` still means "mine", so the existing control keeps
        * working; supplying one sets that account instead. Both go through

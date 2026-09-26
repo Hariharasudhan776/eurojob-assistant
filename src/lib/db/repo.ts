@@ -123,13 +123,13 @@ export async function findUserByEmail(email: string): Promise<UserRow | null> {
   return (rows[0] as UserRow) ?? null;
 }
 
-/** The AI provider this user's generations should use ('claude' | 'gemini'). */
+/** The AI provider this user's generations should use ('claude' | 'gemini' | 'ollama'). */
 export async function getAiProvider(userId: number): Promise<string> {
   const { rows } = await getPool().query('SELECT ai_provider FROM users WHERE id = $1', [userId]);
   return (rows[0]?.ai_provider as string) ?? 'claude';
 }
 
-export async function setAiProvider(userId: number, provider: 'claude' | 'gemini'): Promise<void> {
+export async function setAiProvider(userId: number, provider: 'claude' | 'gemini' | 'ollama'): Promise<void> {
   await getPool().query('UPDATE users SET ai_provider = $2 WHERE id = $1', [userId, provider]);
 }
 

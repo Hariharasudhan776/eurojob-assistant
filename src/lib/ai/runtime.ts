@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { AiClient, type Provider } from './client.ts';
+import { AiClient, providerFrom, type Provider } from './client.ts';
+import { getAiProvider } from '../db/repo.ts';
 import { AiServices } from './services.ts';
 import { DbCache, FileCache } from './cache.ts';
 import { BudgetGuard, DbSpendLedger, DEFAULT_LIMITS } from './budget.ts';
@@ -34,6 +35,19 @@ export function cacheStore() {
   if (explicit === 'db') return new DbCache();
   const ephemeralFilesystem = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
   return ephemeralFilesystem ? new DbCache() : new FileCache(join(projectRoot, 'data', 'ai-cache'));
+}
+
+/**
+ * Which provider a run should use, for callers that have a user id but no
+ * request context -- which means the CLI.
+ *
+ * The web routes have always read `users.ai_provider`; the CLI assumed Claude,
+ * so `sync --explain` kept billing an account the admin had already moved onto a
+ * free provider. AI_PROVIDER overrides the stored value for a one-off run.
+ */
+export async function providerFor(userId: number): Promise<Provider> {
+  const override = process.env.AI_PROVIDER;
+  return providerFrom(override || (await getAiProvider(userId)));
 }
 
 export async function aiRuntime(userId: number, profile: CandidateProfile, provider: Provider = 'claude') {

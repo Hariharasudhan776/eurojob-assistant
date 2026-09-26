@@ -15,9 +15,9 @@ import { dirname, join } from 'node:path';
 import { collect } from '../src/lib/jobs/registry.ts';
 import { CandidateProfile } from '../src/lib/resume/profile.ts';
 import { scoreJob } from '../src/lib/match/score.ts';
-import { AiClient, STAGE_MODELS } from '../src/lib/ai/client.ts';
+import { AiClient, keyEnvVar, STAGE_MODELS } from '../src/lib/ai/client.ts';
 import { shouldAnalyse } from '../src/lib/ai/services.ts';
-import { aiRuntime } from '../src/lib/ai/runtime.ts';
+import { aiRuntime, providerFor } from '../src/lib/ai/runtime.ts';
 import { BudgetExceededError, DEFAULT_LIMITS } from '../src/lib/ai/budget.ts';
 import { ensureUser } from '../src/lib/db/repo.ts';
 import { getPool } from '../src/lib/db/pool.ts';
@@ -45,11 +45,6 @@ async function main() {
    * have actually decided to apply to.
    */
   const withDocuments = args.includes('--full');
-
-  if (!AiClient.isConfigured()) {
-    console.error('ANTHROPIC_API_KEY is not set. Scoring works without it; the AI stages do not.');
-    process.exit(1);
-  }
 
   const profile = CandidateProfile.parse(
     JSON.parse(readFileSync(join(here, '..', 'data', 'profile.sample.v3.json'), 'utf8'))
@@ -80,7 +75,16 @@ async function main() {
   // APP_USER_EMAIL. A second, separate accounting path for the CLI would be a
   // way to spend past the cap without noticing.
   const userId = await ensureUser(process.env.APP_USER_EMAIL || 'local@eurojob');
-  const { client: ai, services, guard, cache } = await aiRuntime(userId, profile);
+
+  // Checked here rather than at the top of the run: which key has to exist
+  // depends on this account's provider, and Ollama needs none.
+  const provider = await providerFor(userId);
+  if (!AiClient.isConfigured(provider)) {
+    console.error(`${keyEnvVar(provider)} is not set. Scoring works without it; the AI stages do not.`);
+    process.exit(1);
+  }
+
+  const { client: ai, services, guard, cache } = await aiRuntime(userId, profile, provider);
 
   console.log(
     `limits: $${DEFAULT_LIMITS.perRunUsd.toFixed(2)}/run, $${DEFAULT_LIMITS.dailyUsd.toFixed(2)}/day ` +

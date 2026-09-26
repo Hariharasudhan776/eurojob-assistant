@@ -23,7 +23,7 @@ Open `.env` and fill in **three** things (everything else has a working default)
 |---|---|---|
 | `PGPASSWORD` | your local PostgreSQL password (leave blank if your `pg_hba.conf` says `trust`) | everything |
 | `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` | signing in |
-| `ANTHROPIC_API_KEY` | [platform.claude.com](https://platform.claude.com) → API keys | AI features only |
+| an AI provider | **nothing to get** if you self-host — see [Running it for nothing](#running-it-for-nothing). Otherwise `GEMINI_API_KEY` (free) or `ANTHROPIC_API_KEY` from [platform.claude.com](https://platform.claude.com) | AI features only |
 | `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` | [developer.adzuna.com](https://developer.adzuna.com) — free | more job coverage (optional) |
 
 Then:
@@ -97,8 +97,9 @@ On Linux or macOS, the cron equivalent:
 | Explaining one match | **$0.009** | Claude Haiku 4.5 |
 | One cover letter | **$0.041** | Claude Sonnet 5 |
 | One tailored resume | **$0.115** | Claude Sonnet 5 |
+| **Any of the above** | **$0.00** | a model on your own machine — see below |
 
-Realistic month: triage 100 jobs (~$0.90) plus documents for 10 real applications (~$1.60) — **about $2.50**.
+Realistic month on Claude: triage 100 jobs (~$0.90) plus documents for 10 real applications (~$1.60) — **about $2.50**. On a self-hosted model, or on Gemini's free tier, that month is $0.00 and the caps below never come into play.
 
 ### It cannot run away
 
@@ -115,6 +116,60 @@ Hitting a cap aborts and tells you which one. Work already done is kept and cach
 The daily cap is **per user**, not per instance: every account has its own $2 a day, so one person generating tailored resumes all afternoon cannot spend anyone else's allowance. Spend lives in the `ai_spend` table — one row per billed call — rather than in memory or a JSON file, so separate commands can't each start from zero and a host with no writable disk can't quietly lose the cap. Each charge is written **before** the response is sent, because a serverless function can be frozen the moment it responds and an unrecorded charge is a cap that stopped applying. Watch it on the **Settings** page.
 
 Every AI answer is cached by content hash — on disk locally, in the `ai_cache` table when the host has no writable disk. Re-analysing a job you already analysed costs nothing, and the same posting arriving from a second job board reuses the first answer.
+
+---
+
+## Running it for nothing
+
+Nothing here requires a paid account. Both halves have a free replacement, and both are a change of environment variable rather than a change of code.
+
+### The model: Ollama, on a machine you own
+
+`ollama` is a third provider beside `claude` and `gemini`. It talks to a model server you run — on this machine or another one on the same network. There is no API key, nothing is billed, and the prompts, which carry your entire profile, never leave your network.
+
+Run the setup script **on the machine that will host the model**, as Administrator:
+
+```
+scripts\ollama-setup.cmd
+```
+
+On Linux or macOS: `sudo bash scripts/ollama-setup.sh`.
+
+It installs Ollama, binds it to `0.0.0.0` (it listens on loopback only by default, which is useless when the app runs elsewhere), opens TCP 11434 **to the local subnet only**, pulls a model sized to the machine's RAM, and prints the three lines to paste into this app's `.env`:
+
+```
+OLLAMA_BASE_URL=http://192.168.1.50:11434
+OLLAMA_MODEL=qwen2.5:7b
+```
+
+Then switch your account over in **Admin → AI provider → Ollama**. New accounts already default to it.
+
+**Three things worth knowing before you rely on it:**
+
+- **The port has no authentication.** Anyone who can reach 11434 can use the model and read every prompt sent to it — which here means your full profile. The firewall rule the script adds is scoped to your own subnet. Do not widen it and do not forward it through a router.
+- **Output quality is the trade.** A 7B model writes a noticeably plainer cover letter than Claude Sonnet does. It matters less than it sounds, because the part that must not be wrong is checked by code either way: `verify.ts` re-reads whatever any model produced and blocks anything your profile does not evidence. A weaker model produces a duller letter, not a dishonest one.
+- **Structured output is what makes a small model viable.** Every request carries the target JSON Schema in Ollama's `format` field, so decoding is constrained to a valid shape rather than hoping for one.
+
+Model sizes, for reference: `llama3.2:3b` on 8 GB, `qwen2.5:7b` on 16 GB, `qwen2.5:14b` on 32 GB. The script picks one by reading the machine's RAM; pass a name to override it (`ollama-setup.cmd qwen2.5:14b`).
+
+**On speed:** measured here on a 16 GB CPU-only machine, the first explanation took 46 seconds — most of it loading the model into RAM. The setup script sets `OLLAMA_KEEP_ALIVE=30m` so the rest of a session does not pay that again. A GPU changes the picture entirely; without one, treat a tailored resume as something you start and come back to.
+
+**On `OLLAMA_NUM_CTX`:** it defaults to 16384 here because Ollama's own default is 4096 and it truncates the prompt past it *silently* — a model answering about the half of a job description it happened to see, with nothing downstream able to tell. If a tailored resume ever fails as truncated, that number is the one to raise: on Ollama it covers the prompt and the answer together, so a long posting leaves less room to write. It costs RAM, which is why it is not higher by default.
+
+### The database: any PostgreSQL
+
+The app speaks plain PostgreSQL through `pg`. Neon is one option in `DEPLOY.md`, not a dependency — there is no Neon SDK, no Neon-specific SQL, and nothing to port. Set `DATABASE_URL` to any Postgres 13+ and run `npm run db:migrate`:
+
+| Instead of Neon | What it costs | Best when |
+|---|---|---|
+| **Postgres on the Ollama machine** | free | you are already running that box. One machine, one backup, nothing leaves the house |
+| **Docker Postgres** | free | you would rather not install a service: `docker run -d -e POSTGRES_PASSWORD=… -p 5432:5432 -v eurojob-pgdata:/var/lib/postgresql/data postgres:17` |
+| **Supabase** | free tier, no card | you deploy to Vercel and need a managed host that a serverless function can reach |
+| **Railway / Render / Aiven** | free or cheap tier | same, if you prefer their console |
+
+The one real constraint: a **serverless** deployment needs a database reachable from the internet, so a Postgres on your home network works for `npm run dev` and not for Vercel. Running everything on your own machine sidesteps that entirely — which is what the rest of this README assumes anyway.
+
+`npm run db:copy -- --write` moves your existing data to whichever you pick, without deleting anything.
 
 ---
 
@@ -265,7 +320,7 @@ Implement `JobSource` in `src/lib/jobs/sources/`, add one line to `src/lib/jobs/
 
 ## Deploying it
 
-Full steps in **[DEPLOY.md](DEPLOY.md)** — Neon for the database, Vercel for the app, and the copy script that moves your local data across without deleting anything.
+Full steps in **[DEPLOY.md](DEPLOY.md)** — Neon for the database, Vercel for the app, and the copy script that moves your local data across without deleting anything. Neon is what DEPLOY.md happens to use, not something the app depends on; [any PostgreSQL works](#the-database-any-postgresql).
 
 The blocker that used to be here is gone: **there is real authentication now.** Passwords are bcrypt, the session cookie is a signed `httpOnly` JWT backed by a `sessions` row that sign-out revokes, and every query that touches a score joins through the caller's own profile, so no query shape can return another user's data.
 
@@ -304,6 +359,7 @@ src/lib/jobs/types.ts         the JobSource interface, and the country names
 src/lib/jobs/parse.ts         location, visa, language, experience extraction
 src/lib/jobs/sources/         one file per job board (arbeitnow, adzuna, themuse, jobicy, ats, jooble)
 src/lib/jobs/lifecycle.ts     when a posting stops counting as open, and why not more than that
+src/lib/ai/client.ts          the three providers: claude, gemini, ollama
 src/lib/ai/prompts.ts         prompts, with the truthfulness rule
 src/lib/ai/verify.ts          checks generated text against the profile
 src/lib/ai/budget.ts          spend caps, per user
@@ -314,6 +370,8 @@ src/app/                      the web UI
 db/001_schema.sql             the schema, with reasoning in comments
 db/002_multiuser_global.sql   auth, per-user spend, role categories
 scripts/                      migrate, sync, set-password, copy-to-remote
+scripts/ollama-setup.cmd      installs a local model server on the machine that will host it
+db/007_ollama_provider.sql    ollama as a provider, and the default for new accounts
 ```
 
 ## What is not built

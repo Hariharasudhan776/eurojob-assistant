@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cvTextFor, getAiProvider, latestProfile } from '@/lib/db/repo';
 import { requireUserId, UnauthenticatedError } from '@/lib/auth';
 import { aiRuntime } from '@/lib/ai/runtime';
-import { AiClient } from '@/lib/ai/client';
+import { AiClient, keyEnvVar, providerFrom } from '@/lib/ai/client';
 import { BudgetExceededError } from '@/lib/ai/budget';
 import { extractCvText, MAX_CV_BYTES } from '@/lib/resume/extract';
 
@@ -84,10 +84,10 @@ export async function POST(request: Request) {
     }
 
     const [profile, provider] = await Promise.all([latestProfile(userId), getAiProvider(userId)]);
-    const chosen = (provider === 'gemini' ? 'gemini' : 'claude') as 'gemini' | 'claude';
+    const chosen = providerFrom(provider);
     if (!AiClient.isConfigured(chosen)) {
       return NextResponse.json(
-        { error: `${chosen === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY'} is not set, so a CV cannot be read.` },
+        { error: `${keyEnvVar(chosen)} is not set, so a CV cannot be read.` },
         { status: 400 }
       );
     }

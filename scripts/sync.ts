@@ -31,9 +31,9 @@ import {
   recordSourceRun, saveAiSummary, saveMatches, upsertJob, dashboardStats, usersWithProfiles,
 } from '../src/lib/db/repo.ts';
 import { STAGE_MODELS } from '../src/lib/ai/client.ts';
-import { AiClient } from '../src/lib/ai/client.ts';
+import { AiClient, keyEnvVar } from '../src/lib/ai/client.ts';
 import { shouldAnalyse } from '../src/lib/ai/services.ts';
-import { aiRuntime } from '../src/lib/ai/runtime.ts';
+import { aiRuntime, providerFor } from '../src/lib/ai/runtime.ts';
 import { BudgetExceededError, DEFAULT_LIMITS } from '../src/lib/ai/budget.ts';
 import { rowToJob, targetCountriesFor } from '../src/lib/match/rescore.ts';
 import { DEFAULT_SEARCH } from '../src/lib/search-config.ts';
@@ -106,11 +106,9 @@ async function main() {
 
   // --- optional AI explanations, for one user, on their own cap -----------
   if (explainCount > 0) {
-    if (!AiClient.isConfigured()) {
-      console.log('ANTHROPIC_API_KEY not set, skipping explanations.');
-    } else {
-      await explainFor(explainEmail, explainCount);
-    }
+    // The key check moved inside explainFor: which key is even needed depends on
+    // the account's provider, and that is not known until the user is resolved.
+    await explainFor(explainEmail, explainCount);
   } else {
     console.log('(no AI used, nothing spent. Pass --explain 5 to generate explanations.)');
   }
@@ -141,7 +139,13 @@ async function explainFor(email: string, count: number) {
     return;
   }
 
-  const { client, services, guard } = await aiRuntime(user.id, profile.data);
+  const provider = await providerFor(user.id);
+  if (!AiClient.isConfigured(provider)) {
+    console.log(`${keyEnvVar(provider)} is not set, skipping explanations.`);
+    return;
+  }
+
+  const { client, services, guard } = await aiRuntime(user.id, profile.data, provider);
   const preferredCountries = await targetCountriesFor(user.id);
 
   console.log(

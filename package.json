@@ -17,7 +17,8 @@
     "sync": "node --experimental-strip-types scripts/sync.ts",
     "agent": "node --experimental-strip-types scripts/agent.ts",
     "user:password": "node --experimental-strip-types scripts/set-password.ts",
-    "db:copy": "node --experimental-strip-types scripts/copy-to-remote.ts"
+    "db:copy": "node --experimental-strip-types scripts/copy-to-remote.ts",
+    "apply": "node --experimental-strip-types scripts/apply.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -42,6 +43,7 @@
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "playwright-core": "^1.49.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2"
   },

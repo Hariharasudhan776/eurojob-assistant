@@ -23,3 +23,7 @@ next-env.d.ts
 # what the tests and scripts read.
 data/profile.v*.json
 PROFILE-ANALYSIS.md
+
+# Apply bot: personal answers, its log, screenshots and generated cover letters.
+data/apply-answers.json
+data/apply/

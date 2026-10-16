@@ -205,13 +205,10 @@ export async function renderResume(
 
   if (profile.projects.length) {
     children.push(heading('SELECTED PROJECTS'));
-    const order = new Map(tailored.projectOrder.map((name, i) => [name.toLowerCase(), i]));
-    const projects = [...profile.projects].sort(
-      (a, b) => (order.get(a.name.toLowerCase()) ?? 99) - (order.get(b.name.toLowerCase()) ?? 99)
-    );
-    for (const project of projects.slice(0, 5)) {
+    for (const project of orderProjects(profile, tailored)) {
       children.push(plain(`${project.name} (${project.period})`, { bold: true, after: 20 }));
       children.push(bullet(`${project.stack.join(', ')} — ${project.summary}`));
+      if (project.url) children.push(plain(project.url, { size: SMALL, color: GREY, after: 60 }));
     }
   }
 
@@ -336,6 +333,20 @@ export function renderResumeText(profile: CandidateProfile, tailored: TailoredRe
     lines.push('');
   }
 
+  // Projects were missing here while the DOCX printed them, so the copy pasted
+  // into ATS forms -- the one most likely to be read verbatim -- carried none of
+  // the project evidence. Same order and same five as the DOCX.
+  const projects = orderProjects(profile, tailored);
+  if (projects.length) {
+    lines.push('SELECTED PROJECTS', '');
+    for (const project of projects) {
+      lines.push(`${project.name} (${project.period}) | ${project.stack.join(', ')}`);
+      lines.push(`- ${project.summary}`);
+      if (project.url) lines.push(`- ${project.url}`);
+      lines.push('');
+    }
+  }
+
   lines.push('EDUCATION', '');
   for (const e of profile.education) {
     lines.push(`${e.qualification} | ${e.startYear} - ${e.endYear}`, `${e.institution}${e.result ? ` | ${e.result}` : ''}`, '');
@@ -347,6 +358,14 @@ export function renderResumeText(profile: CandidateProfile, tailored: TailoredRe
   }
   lines.push('LANGUAGES', '', profile.languages.map((l) => `${l.language} (${l.description})`).join('; '));
   return lines.join('\r\n');
+}
+
+/** The model's project ranking, then profile order; five at most, as both formats print. */
+function orderProjects(profile: CandidateProfile, tailored: TailoredResume) {
+  const order = new Map(tailored.projectOrder.map((name, i) => [name.toLowerCase(), i]));
+  return [...profile.projects]
+    .sort((a, b) => (order.get(a.name.toLowerCase()) ?? 99) - (order.get(b.name.toLowerCase()) ?? 99))
+    .slice(0, 5);
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

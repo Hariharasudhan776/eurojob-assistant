@@ -218,6 +218,8 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'typescript', display: 'TypeScript', category: 'language', aliases: ['ts'], related: { javascript: 0.8 } },
   { canonical: 'nodejs', display: 'Node.js', category: 'framework', aliases: ['node', 'node js', 'nodejs'], related: { javascript: 0.7 } },
   { canonical: 'electron', display: 'Electron.js', category: 'framework', aliases: ['electron js', 'electronjs'], related: { javascript: 0.6, nodejs: 0.6 } },
+  { canonical: 'react', display: 'React', category: 'framework', aliases: ['react.js', 'reactjs', 'react js'], related: { javascript: 0.5, typescript: 0.4 } },
+  { canonical: 'nextjs', display: 'Next.js', category: 'framework', aliases: ['next.js', 'next js', 'nextjs'], related: { react: 0.7, nodejs: 0.5 } },
   { canonical: 'html', display: 'HTML', category: 'language', aliases: ['html5'] },
   { canonical: 'css', display: 'CSS', category: 'language', aliases: ['css3'] },
   { canonical: 'c', display: 'C', category: 'language', aliases: [] },
@@ -284,7 +286,17 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'rest-api', display: 'REST APIs', category: 'framework', aliases: ['rest', 'restful', 'rest api', 'api integration', 'web services'] },
   { canonical: 'docker', display: 'Docker', category: 'tool', aliases: ['containers', 'containerisation'] },
   { canonical: 'kubernetes', display: 'Kubernetes', category: 'tool', aliases: ['k8s'] },
-  { canonical: 'cicd', display: 'CI/CD', category: 'tool', aliases: ['ci/cd', 'continuous integration', 'jenkins', 'github actions', 'gitlab ci'] },
+  /**
+   * CI/CD products are split out for the same reason `bi-tools` was: v8 records
+   * GitHub Actions, which he genuinely runs. With jenkins and gitlab ci still
+   * aliases of `cicd`, a posting demanding Jenkins would have scored as covered
+   * and `mirror.ts` would have printed "Jenkins". Each product is now its own
+   * requirement; `cicd` keeps only the generic vocabulary.
+   */
+  { canonical: 'cicd', display: 'CI/CD', category: 'tool', aliases: ['ci/cd', 'continuous integration', 'continuous delivery', 'continuous deployment', 'ci cd pipelines', 'build pipelines'] },
+  { canonical: 'github-actions', display: 'GitHub Actions', category: 'tool', aliases: ['github actions', 'gh actions'], related: { cicd: 0.8 } },
+  { canonical: 'jenkins', display: 'Jenkins', category: 'tool', aliases: ['jenkins'], related: { cicd: 0.6, 'github-actions': 0.5 } },
+  { canonical: 'gitlab-ci', display: 'GitLab CI', category: 'tool', aliases: ['gitlab ci', 'gitlab ci/cd', 'gitlab pipelines'], related: { cicd: 0.6, 'github-actions': 0.6 } },
   { canonical: 'agile', display: 'Agile / Scrum', category: 'soft', aliases: ['scrum', 'agile methodology', 'kanban', 'sprint'] },
   { canonical: 'cloud', display: 'Cloud platforms', category: 'tool', aliases: ['aws', 'azure', 'gcp', 'google cloud', 'oci'] },
 
@@ -492,7 +504,7 @@ export const TAXONOMY: TaxonomyEntry[] = [
     canonical: 'ai-assisted-dev',
     display: 'AI-assisted development',
     category: 'ai',
-    aliases: ['ai assisted development', 'ai-assisted coding', 'copilot', 'github copilot', 'ai coding tools', 'ai pair programming', 'cursor'],
+    aliases: ['ai assisted development', 'ai-assisted coding', 'copilot', 'github copilot', 'ai coding tools', 'ai pair programming', 'claude code', 'ai coding agents'],
     related: { 'generative-ai': 0.6, 'prompt-engineering': 0.5 },
   },
   {

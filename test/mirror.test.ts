@@ -386,6 +386,33 @@ test('REGRESSION: one BI tool is not another', () => {
   }
 });
 
+test('REGRESSION: one CI/CD product is not another', () => {
+  // v8 records GitHub Actions. `cicd` used to carry jenkins, github actions and
+  // gitlab ci as aliases of one canonical -- the BI-tools bug again, waiting for
+  // the first CI product he actually held.
+  const v7 = CandidateProfile.parse(JSON.parse(readFileSync('data/profile.sample.v7.json', 'utf8')));
+  const held = {
+    ...v7,
+    skills: [...v7.skills, {
+      name: 'GitHub Actions', canonical: 'github-actions', category: 'tool' as const,
+      years: 0.2, level: 'familiar' as const, evidence: 'Scheduled daily workflow in a public repository.',
+    }],
+  };
+  const job = dbaJob(`Requirements:
+- Jenkins pipelines
+- GitLab CI
+- GitHub Actions
+- SQL`, 'Platform Engineer');
+  const match = scoreJob(held, job, { preferredCountries: ['DE'] });
+  const plan = buildMirrorPlan(match.requirements.required, match.requirements.preferred, held);
+
+  const printed = plan.mirror.map((e) => e.requirement);
+  for (const requirement of ['jenkins', 'gitlab-ci']) {
+    assert.ok(!printed.includes(requirement), `${requirement} must not be claimed from GitHub Actions`);
+  }
+  assert.ok(printed.includes('github-actions'), 'GitHub Actions itself should print — he runs it');
+});
+
 test('a bare section heading is structure, not a requirement', () => {
   // Once the taxonomy gained an entry for requirements gathering, the literal
   // word "Requirements:" heading almost every job advert became a matched

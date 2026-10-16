@@ -30,11 +30,18 @@ interface GhQuestion {
   required: boolean;
   fields: GhField[];
 }
+/** Demographic questions use their own shape: answer_options, no fields. */
+interface GhDemographic {
+  id: number;
+  label: string;
+  required: boolean;
+  answer_options?: { id: number; label: string }[];
+}
 interface GhJob {
   title: string;
   questions?: GhQuestion[];
   location_questions?: GhQuestion[];
-  demographic_questions?: { questions?: GhQuestion[] } | null;
+  demographic_questions?: { questions?: GhDemographic[] } | null;
 }
 
 export const embedUrl = (board: string, id: string) =>
@@ -68,8 +75,19 @@ export async function fetchQuestions(board: string, id: string): Promise<{ title
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Greenhouse API ${res.status} for ${board}/${id}`);
   const job = (await res.json()) as GhJob;
-  const all = [...(job.questions ?? []), ...(job.demographic_questions?.questions ?? [])];
-  return { title: job.title, questions: all.filter((q) => q.fields.length).map(toQuestion) };
+  const questions = (job.questions ?? []).filter((q) => q.fields?.length).map(toQuestion);
+  // Demographic monitoring is voluntary almost everywhere and is never filled
+  // here. A board that makes one REQUIRED still gets it listed -- with no field
+  // name, so fillAndSubmit reports it as unfilled and the job goes to the
+  // manual queue instead of anyone guessing an answer.
+  for (const d of job.demographic_questions?.questions ?? []) {
+    if (!d.required) continue;
+    questions.push({
+      label: d.label, required: true, name: '', kind: 'select',
+      options: (d.answer_options ?? []).map((o) => ({ label: o.label, value: o.id })),
+    });
+  }
+  return { title: job.title, questions };
 }
 
 export type FillOutcome =
@@ -167,10 +185,16 @@ export async function fillAndSubmit(page: Page, url: string, input: FillInput): 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   if (!(await page.locator('form').count())) return { status: 'failed', reason: 'no application form on the page' };
   await page.locator('input#first_name').waitFor({ timeout: 20_000 });
+  // The form is server-rendered and then hydrated by React, which resets any
+  // value typed before it finishes: the first dry run lost First Name exactly
+  // this way. Wait for the network to settle, then verify every box below.
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+  await pause(page, 1500);
 
   const misses: string[] = [];
   for (const { question, answer } of input.questions) {
     const id = question.name;
+    if (!id) { if (question.required) misses.push(question.label); continue; }
     if (answer.kind === 'skip' || answer.kind === 'unanswered' || answer.kind === 'freeform') continue;
     if (answer.kind === 'text') {
       const field = page.locator(`[id="${id}"]`);
@@ -190,6 +214,17 @@ export async function fillAndSubmit(page: Page, url: string, input: FillInput): 
   }
   if (await page.locator('input[id="candidate-location"]').count()) {
     if (!(await chooseCombo(page, 'candidate-location', input.city, true))) misses.push('Location (City)');
+  }
+
+  // Verify pass: re-read every typed box and refill any the page has reset.
+  for (const { question, answer } of input.questions) {
+    if (answer.kind !== 'text' || !question.name) continue;
+    const field = page.locator(`[id="${question.name}"]`);
+    if (!(await field.count())) continue;
+    if ((await field.inputValue().catch(() => '')) !== answer.value) {
+      await field.fill(answer.value);
+      if ((await field.inputValue().catch(() => '')) !== answer.value) misses.push(`${question.label} (would not keep its value)`);
+    }
   }
 
   if (input.submit) {

@@ -33,7 +33,8 @@ import { extractSalary } from '../src/lib/jobs/compensation.ts';
 import { formatQuote, suggestQuote } from '../src/lib/jobs/quote.ts';
 import { acceptProse, answerQuestion, type ApplicantFacts, type Answer, type FormQuestion, type JobContext } from '../src/lib/apply/answers.ts';
 import { embedUrl, fetchQuestions, fillAndSubmit } from '../src/lib/apply/greenhouse.ts';
-import type { CandidateProfile } from '../src/lib/resume/profile.ts';
+import { SKILL_LEVEL_RANK, type CandidateProfile } from '../src/lib/resume/profile.ts';
+import { extractSkills } from '../src/lib/match/taxonomy.ts';
 
 const USER_ID = 1;
 const DIR = 'data/apply';
@@ -48,6 +49,7 @@ interface Settings {
   noticePeriod: string;
   consentToRecording: boolean;
   willingOnsite: boolean;
+  publicOfficial: boolean;
   resumeFile: string;
   minScore: number;
   dailyCap: number;
@@ -157,6 +159,22 @@ function coverLetter(profile: CandidateProfile, s: Settings, job: JobContext, jo
   return path;
 }
 
+/**
+ * The phone-country box must follow the NUMBER, not where the person lives: a
+ * mobile kept from one's home country keeps its own dialling code, and pairing
+ * it with the country of residence gives the recruiter a number that does not
+ * connect.
+ */
+const DIAL_CODES: [string, string][] = [
+  ['+968', 'Oman'], ['+971', 'United Arab Emirates'], ['+966', 'Saudi Arabia'], ['+974', 'Qatar'],
+  ['+965', 'Kuwait'], ['+973', 'Bahrain'], ['+91', 'India'], ['+44', 'United Kingdom'], ['+49', 'Germany'],
+  ['+31', 'Netherlands'], ['+353', 'Ireland'],
+];
+function phoneCountryOf(phone: string, fallback: string): string {
+  const compact = phone.replace(/[\s()-]/g, '').replace(/^00/, '+');
+  return DIAL_CODES.find(([code]) => compact.startsWith(code))?.[1] ?? fallback;
+}
+
 async function candidates(s: Settings) {
   const { rows } = await getPool().query(
     `SELECT j.id, j.title, j.company, j.country, j.description, j.source_job_id,
@@ -205,7 +223,16 @@ async function main() {
     noticePeriod: s.noticePeriod,
     consentToRecording: s.consentToRecording,
     willingOnsite: s.willingOnsite,
+    publicOfficial: s.publicOfficial,
     custom: s.custom,
+    // Yes only when every skill the question names is held at working level or
+    // better; any named skill missing from the profile is an honest No.
+    skillAnswer: (label) => {
+      const named = extractSkills(label);
+      if (!named.length) return null;
+      const held = new Map(profile.skills.map((k) => [k.canonical, SKILL_LEVEL_RANK[k.level]]));
+      return named.every((c) => (held.get(c) ?? 0) >= SKILL_LEVEL_RANK.working);
+    },
   };
 
   const history = readLog();
@@ -251,7 +278,15 @@ async function main() {
         extracted: extractSalary(job.description ?? ''),
         candidateYears: profile.totalYears,
       });
-      const ctx: JobContext = { company: job.company, title: job.title, country: job.country, salary: quote ? formatQuote(quote) : null };
+      const ctx: JobContext = {
+        company: job.company,
+        title: job.title,
+        country: job.country,
+        salary: quote ? formatQuote(quote) : null,
+        salaryRange: quote ? { min: quote.min, max: quote.max } : null,
+        salaryCurrency: quote?.currency ?? null,
+        countryName: job.country ? new Intl.DisplayNames(['en'], { type: 'region' }).of(job.country) ?? null : null,
+      };
 
       const planned: { question: FormQuestion; answer: Answer }[] = [];
       const open: { question: FormQuestion; reason: string }[] = [];
@@ -278,7 +313,7 @@ async function main() {
         questions: planned,
         resumePath,
         coverLetterPath: coverPath,
-        phoneCountry: facts.country,
+        phoneCountry: phoneCountryOf(facts.phone, facts.country),
         city: facts.city,
         submit: SUBMIT,
         screenshot: resolve(`${DIR}/shots/${job.id}.png`),

@@ -5,11 +5,32 @@
   "noticePeriod": "TODO e.g. One month notice period",
   "consentToRecording": "TODO true or false: allow interviews to be recorded / AI note-takers",
   "willingOnsite": true,
+  "publicOfficial": "TODO true or false: you or a close family member held public office in the last 5 years",
   "resumeFile": "../../career/Your_Resume.docx",
   "minScore": 70,
   "dailyCap": 15,
   "maxPerCompany": 2,
-  "countries": ["DE", "NL", "IE", "SE", "FI", "DK", "NO", "BE", "AT", "FR", "CH", "LU", "PL", "CZ", "PT", "IT", "ES", "EE", "GB"],
+  "countries": [
+    "DE",
+    "NL",
+    "IE",
+    "SE",
+    "FI",
+    "DK",
+    "NO",
+    "BE",
+    "AT",
+    "FR",
+    "CH",
+    "LU",
+    "PL",
+    "CZ",
+    "PT",
+    "IT",
+    "ES",
+    "EE",
+    "GB"
+  ],
   "custom": {
     "example: exact question label from data/apply/unanswered.json": "your answer, or the exact option text to pick"
   }

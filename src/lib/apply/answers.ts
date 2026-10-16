@@ -57,8 +57,16 @@ export interface ApplicantFacts {
   consentToRecording: boolean;
   /** Whether the candidate is willing to work on site or hybrid after relocating. */
   willingOnsite: boolean;
+  /** Whether the candidate or a close family member has held public office (anti-bribery screening). */
+  publicOfficial: boolean;
   /** Exact form label (lowercased, trimmed) -> answer text or option label. */
   custom: Record<string, string>;
+  /**
+   * "Do you have experience with X?" -- true when the profile holds every skill
+   * the question names, false when it lacks one, null when it names none the
+   * taxonomy knows (then the question is left for the person).
+   */
+  skillAnswer?: (label: string) => boolean | null;
 }
 
 export interface JobContext {
@@ -67,6 +75,11 @@ export interface JobContext {
   country: string | null;
   /** Pre-formatted salary quote in the job's own currency, or null. */
   salary: string | null;
+  /** The same quote as numbers, for forms that offer salary bands to pick from. */
+  salaryRange?: { min: number; max: number } | null;
+  salaryCurrency?: string | null;
+  /** The job's country in English ("Germany"), for "where will you work" pickers. */
+  countryName?: string | null;
 }
 
 type Rule = {
@@ -108,50 +121,127 @@ function yearsOption(q: FormQuestion, years: number): FormOption | null {
   return null;
 }
 
+/** "Indian" -> "India". Only the nationalities this candidate pool needs; anything else passes through. */
+function citizenshipCountry(nationality: string): string {
+  const map: Record<string, string> = { indian: 'India', omani: 'Oman', pakistani: 'Pakistan', 'sri lankan': 'Sri Lanka', bangladeshi: 'Bangladesh', filipino: 'Philippines', kenyan: 'Kenya' };
+  return map[norm(nationality)] ?? nationality;
+}
+
+/** The band containing `value`, from labels like "40 000 EUR - 45 000 EUR", "less than 40k", "90 000+". */
+export function bandOption(q: FormQuestion, value: number): FormOption | null {
+  for (const o of q.options) {
+    const label = norm(o.label)
+      .replace(/(\d)[\s,.'’](?=\d{3}\b)/g, '$1')
+      .replace(/(\d+)\s*k\b/g, (_m, n: string) => String(Number(n) * 1000));
+    const nums = (label.match(/\d+/g) ?? []).map(Number).filter((n) => n >= 1000);
+    if (!nums.length) continue;
+    if (/less than|under|below|up to/.test(label) && value < nums[0]!) return o;
+    if ((/more than|over|above|\+/.test(label) || nums.length === 1) && /more|over|above|\+/.test(label) && value >= nums[0]!) return o;
+    if (nums.length >= 2 && value >= nums[0]! && value <= nums[1]!) return o;
+  }
+  return null;
+}
+
 /**
  * Ordered. Specific before general; denials (right to work) before the visa
  * rule that would otherwise catch the same sentence.
  */
 export const RULES: Rule[] = [
   // Identity, read before anything fuzzy can claim the label.
-  { test: /^first name|^given name|^preferred (first )?name/, answer: (_q, f) => ({ kind: 'text', value: f.firstName }) },
-  { test: /^last name|^surname|^family name/, answer: (_q, f) => ({ kind: 'text', value: f.lastName }) },
+  // English, French (Doctolib), German and Dutch spellings of the basic fields.
+  { test: /^first name|^given name|^preferred (first )?name|^prénom|^vorname|^voornaam/, answer: (_q, f) => ({ kind: 'text', value: f.firstName }) },
+  { test: /^last name|^surname|^family name|^nom( de famille)?$|^nachname|^achternaam/, answer: (_q, f) => ({ kind: 'text', value: f.lastName }) },
   { test: /^full name|^name$/, answer: (_q, f) => ({ kind: 'text', value: `${f.firstName} ${f.lastName}` }) },
-  { test: /^e-?mail/, answer: (_q, f) => ({ kind: 'text', value: f.email }) },
-  { test: /^phone|mobile number|telephone/, answer: (_q, f) => ({ kind: 'text', value: f.phone }) },
+  { test: /^e-?mail|^adresse e-?mail|^courriel/, answer: (_q, f) => ({ kind: 'text', value: f.email }) },
+  { test: /^phone|mobile number|telephone|^téléphone|^telefon/, answer: (_q, f) => ({ kind: 'text', value: f.phone }) },
   { test: /linkedin/, answer: (_q, f) => ({ kind: 'text', value: f.linkedin }) },
   { test: /github|portfolio|personal (website|site)|^website/, answer: (_q, f) => ({ kind: 'text', value: f.github }) },
 
-  // Work authorisation. Right to work FIRST: its wording often mentions a visa.
+  // "Where CAN you work?" asks for countries, not yes/no: the citizenship country.
+  {
+    test: /(in )?(what|which) countr(y|ies) (do you have|are you) .*(right to work|authori[sz]ed to work|eligible to work)/,
+    answer: (q, f) => either(q, citizenshipCountry(f.nationality), new RegExp(`^${norm(citizenshipCountry(f.nationality))}$`)),
+  },
+  // Work authorisation. "Sponsor" decides first: Stripe asks "Will you require
+  // Stripe to sponsor you for a work permit", and the right-to-work rule (which
+  // knows "work permit") answered it No in a dry run. Then right to work, whose
+  // wording often mentions a visa; then the remaining visa vocabulary.
+  { test: /sponsor/, answer: (q) => either(q, 'Yes', YES) },
   {
     test: /right to work|legal(ly)? (right|authori[sz]ed|entitled|permitted|able) to work|authori[sz]ed to work|eligible to work|work (permit|authori[sz]ation)|permission to work/,
     answer: (q) => either(q, 'No', NO),
   },
   {
-    test: /sponsor|visa|blue card|work permit support/,
+    test: /visa|blue card|work permit support/,
     answer: (q) => either(q, 'Yes', YES),
   },
   { test: /relocat/, answer: (q) => either(q, 'Yes', YES) },
+  // Export-control screening: none of the listed countries applies to this candidate.
+  { test: /cuba|iran|north korea|dprk|syria|belarus|crimea/, answer: (q) => either(q, 'No', NO) },
+  { test: /eu citizen|eea citizen|citizen of (an? |the )?(eu|eea|european)/, answer: (q) => either(q, 'No', NO) },
+  {
+    test: /(in|of) the (uk|united kingdom) do you (reside|live)|which (country|part) of the (uk|united kingdom)/,
+    answer: (q) => either(q, 'Not applicable', /^other$|not applicable|outside|n\/a|other/),
+  },
+  {
+    test: /^if (you are |you're )?(located|based|living|residing) in (the )?(us|usa|u\.s\.|united states)/,
+    answer: (q) => either(q, 'Not applicable', /not applicable|n\/a|^other$|outside/),
+  },
+  {
+    test: /countr(y|ies) you (anticipate|expect|plan|intend|would like|will be) (to be )?work/,
+    answer: (q, _f, j) => {
+      if (!j.countryName) return { kind: 'unanswered', reason: 'job country unknown' };
+      return either(q, j.countryName, new RegExp(`^${norm(j.countryName)}$`));
+    },
+  },
+  {
+    test: /work remotely|remote work|work from a remote/,
+    answer: (q, f) => (f.willingOnsite ? either(q, 'No', /office/, NO) : { kind: 'unanswered', reason: 'remote question and willingOnsite is false' }),
+  },
   { test: /citizenship|nationality/, answer: (q, f) => either(q, f.nationality, new RegExp(norm(f.nationality)), /india/) },
   {
     test: /where (do|are) you (currently )?(live|living|based|located)|country of residence|current (country|location)|currently (live|reside|based)|where are you based/,
-    answer: (q, f) => either(q, `${f.city}, ${f.country}`, new RegExp(`^${norm(f.country)}$`), new RegExp(norm(f.country))),
+    // Word-bounded: a bare /oman/ matched "Romania" on Stripe's list, which
+    // has no Oman. Then "Other" is the true pick.
+    answer: (q, f) => either(q, `${f.city}, ${f.country}`, new RegExp(`^${norm(f.country)}$`), new RegExp(`\\b${norm(f.country)}\\b`), /^other\b/),
   },
   {
     test: /hybrid|in the office|from the office|on-?site|in person|office (\d|three|two|days)|commut/,
     answer: (q, f) => (f.willingOnsite ? either(q, 'Yes', YES) : { kind: 'unanswered', reason: 'on-site question and willingOnsite is false' }),
   },
 
+  // Anti-bribery screening, answered from the person's own statement.
+  { test: /public official|politically exposed|government official/, answer: (q, f) => either(q, f.publicOfficial ? 'Yes' : 'No', f.publicOfficial ? YES : NO) },
+  // "Confirm you live near our London office": true only if the label names the
+  // candidate's own city. Today that is No, which the person chose to send.
+  {
+    test: /live (near|close to|within)|within commuting distance|commutable distance/,
+    answer: (q, f) => (new RegExp(`\\b${norm(f.city)}\\b`).test(norm(q.label)) ? either(q, 'Yes', YES) : either(q, 'No', NO)),
+  },
+
   // History with this employer.
   {
-    test: /previously (been )?(employed|worked)|worked (for|at|with) .* before|former employee|ever (been )?(employed|worked)|have you (ever )?applied/,
-    answer: (q) => either(q, 'No', /never/, NO),
+    test: /previously (been )?(employed|worked)|worked (for|at|with) .* before|former employee|ever (been )?(employed|worked)|have you (ever )?applied|(employed|worked) (by|at|for) .* (in the past|before|previously)/,
+    answer: (q) => either(q, 'No', /have not|never/, NO),
   },
 
   // Money and timing.
   {
     test: /salary|compensation|pay expectation|remuneration|expected (gross|annual|pay)/,
-    answer: (q, _f, j) => (j.salary ? either(q, j.salary) : { kind: 'unanswered', reason: 'no salary quote for this country' }),
+    answer: (q, _f, j) => {
+      if (!j.salary) return { kind: 'unanswered', reason: 'no salary quote for this country' };
+      if (q.kind === 'text' || q.kind === 'textarea') {
+        // Adyen asks "in PLN per month": an annual figure there reads as 12x the ask.
+        if (/per month|\/ ?month|monthly|a month/.test(norm(q.label)) && j.salaryRange && j.salaryCurrency) {
+          const m = (v: number) => (Math.round(v / 12 / 500) * 500).toLocaleString('en-GB');
+          return { kind: 'text', value: `${j.salaryCurrency} ${m(j.salaryRange.min)} – ${m(j.salaryRange.max)} per month` };
+        }
+        return { kind: 'text', value: j.salary };
+      }
+      // A band picker: the band holding the middle of the quote.
+      const option = j.salaryRange ? bandOption(q, (j.salaryRange.min + j.salaryRange.max) / 2) : null;
+      return option ? { kind: 'option', option } : { kind: 'unanswered', reason: 'no salary band fits the quote' };
+    },
   },
   {
     test: /notice period|earliest (availability|start)|start date|when (can|could) you start|available to start|availability/,
@@ -162,8 +252,8 @@ export const RULES: Rule[] = [
     const option = yearsOption(q, f.totalYears);
     return option ? { kind: 'option', option } : { kind: 'unanswered', reason: 'no experience band fits' };
   } },
-  { test: /current (company|employer)|most recent (company|employer)/, answer: (q, f) => either(q, f.currentEmployer) },
-  { test: /current (job )?(title|role|position)|most recent (title|role)/, answer: (q, f) => either(q, f.currentTitle) },
+  { test: /(current|previous|most recent|present)( or (previous|most recent|past|last))? (company|employer)/, answer: (q, f) => either(q, f.currentEmployer) },
+  { test: /(current|previous|most recent|present)( or (previous|most recent|past|last))? (job )?(title|role|position)/, answer: (q, f) => either(q, f.currentTitle) },
 
   // Language. English is held; other languages are not, and saying so is the honest answer.
   { test: /english/, answer: (q) => either(q, 'Professional working proficiency', /fluent|professional|proficient|advanced|c2|c1|native|yes/) },
@@ -181,10 +271,30 @@ export const RULES: Rule[] = [
         : either(q, 'No', /do not consent|don't consent|^no\b/),
   },
   {
-    test: /privacy|data (protection|processing|retention)|gdpr|consent|acknowledge|i (have read|agree|confirm|understand)|terms (and|&) conditions|terms of use/,
+    test: /privacy|data (protection|processing|retention|transfer)|gdpr|consent|acknowledge|i (have read|agree|confirm|understand)|terms (and|&) conditions|terms of use/,
     answer: (q) => either(q, 'Yes', /^yes|i agree|agree|i consent|consent|acknowledge|i have read|i confirm|confirm|accept/),
   },
-  { test: /how did you (hear|find|learn)|where did you (hear|find|see)|^source$|referral source|application source/, answer: (q) => either(q, 'Company careers page', /careers|company website|website|job board|other/) },
+  {
+    // The bot reads the employer's own board, so "their careers site" is the
+    // true source. Campus/event/referral options also say "careers" (MongoDB:
+    // "College Careers Page / Event") and are filtered out first.
+    test: /how did you (first )?(hear|find|learn|come across)|where did you (first )?(hear|find|see)|^source$|referral source|application source/,
+    answer: (q) => {
+      if (q.kind === 'text' || q.kind === 'textarea') return { kind: 'text', value: 'Company careers page' };
+      const fair = { ...q, options: q.options.filter((o) => !/college|university|campus|event|referr|employee|agency|recruiter|friend/i.test(o.label)) };
+      const option = pickOption(fair, /career|company website|website/, /job board|job site/, /^other\b/);
+      return option ? { kind: 'option', option } : { kind: 'unanswered', reason: 'no option fits the true answer' };
+    },
+  },
+  {
+    test: /how (should|would you like|do you prefer|can) (we|us)? ?(to )?(communicate|contact)|preferred (method of )?(contact|communication)/,
+    answer: (q) => either(q, 'Email', /^e-?mail/),
+  },
+  { test: /whatsapp|\bsms\b|text messages|opt-?in/, answer: (q) => either(q, 'No', NO) },
+  {
+    test: /influence on your decision|decision to apply|why did you apply|reason (for|you are) applying/,
+    answer: (q) => (q.kind === 'text' || q.kind === 'textarea' ? { kind: 'freeform' } : either(q, '', /^the role$/, /role/)),
+  },
   { test: /access(ibility)? (needs|requirements)|adjustment|accommodation/, answer: (q) => either(q, 'No', NO, /none|not required/) },
 
   // Equal-opportunity monitoring: always the "prefer not to say" option when one exists.
@@ -194,6 +304,16 @@ export const RULES: Rule[] = [
       if (q.kind === 'text' || q.kind === 'textarea') return q.required ? { kind: 'unanswered', reason: 'demographic free text' } : { kind: 'skip' };
       const option = pickOption(q, DECLINE);
       return option ? { kind: 'option', option } : q.required ? { kind: 'unanswered', reason: 'no decline option' } : { kind: 'skip' };
+    },
+  },
+
+  // "Do you have experience with X?": answered from the profile, never assumed.
+  {
+    test: /^(do|have) you (have|possess|got|worked|used)|experience (with|in|using)|expertise (in|with)|hands-on/,
+    answer: (q, f) => {
+      const held = f.skillAnswer?.(q.label) ?? null;
+      if (held === null) return { kind: 'unanswered', reason: 'skill question naming nothing the profile can check' };
+      return held ? either(q, 'Yes', YES) : either(q, 'No', NO);
     },
   },
 

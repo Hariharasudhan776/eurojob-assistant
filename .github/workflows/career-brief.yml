@@ -1,0 +1,39 @@
+name: Career briefing
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      include_post:
+        description: Include a LinkedIn post draft in this manual briefing
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: career-briefing
+  cancel-in-progress: false
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Prepare job shortlist and review drafts
+        run: node --experimental-strip-types scripts/career-brief.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CAREER_USER_EMAIL: ${{ vars.CAREER_USER_EMAIL }}
+          INCLUDE_POST_DRAFT: ${{ github.event.inputs.include_post == 'true' && '1' || '0' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: career-brief-${{ github.run_id }}
+          path: career-brief.md
+          if-no-files-found: error
+          retention-days: 30

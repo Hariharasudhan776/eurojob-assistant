@@ -25,7 +25,7 @@ async function main() {
   const lines = [`# Career briefing — ${stamp} GST`, '', `Portfolio: ${portfolio}`, '', 'This briefing runs on GitHub, independent of a personal computer. Matches are recommendations, not hiring probabilities. Source flags are not employer confirmations.', ''];
   const email = process.env.CAREER_USER_EMAIL || 'hariharasudhan776@gmail.com';
   try {
-    const { rows: users } = await pool.query(`SELECT u.id, p.id AS profile_id, p.version, p.created_at FROM users u JOIN LATERAL (SELECT id,version,created_at FROM profiles WHERE user_id=u.id ORDER BY version DESC LIMIT 1) p ON true WHERE lower(u.email)=lower($1) OR lower(p.data->>'email')=lower($1)`, [email]);
+    const { rows: users } = await pool.query(`SELECT u.id, p.id AS profile_id, p.version, p.created_at FROM users u JOIN LATERAL (SELECT id,version,created_at,data FROM profiles WHERE user_id=u.id ORDER BY version DESC LIMIT 1) p ON true WHERE lower(u.email)=lower($1) OR lower(p.data->>'email')=lower($1)`, [email]);
     if (users.length !== 1) throw new Error('The intended candidate profile was not found. Set CAREER_USER_EMAIL to the correct existing account.');
     const profile = users[0];
     lines.push(`Profile version: ${profile.version}. No profile changes were made.`, '');

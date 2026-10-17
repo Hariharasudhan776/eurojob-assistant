@@ -36,6 +36,15 @@ async function main() {
       const link=safeUrl(job.url);
       lines.push(`### ${i+1}. ${safe(job.title)} — ${safe(job.company)}`, '', `- Location: ${safe(job.city)}, ${safe(job.country)}. Do not assume remote permits work from Oman.`, `- Match score: ${job.overall}/100.`, `- Sponsorship: ${sponsor(job.visa_sponsorship)}. Relocation: ${sponsor(job.relocation_support)}.`, `- Matching skills: ${(job.strong_matches || []).slice(0,8).map(safe).join(', ') || 'Review the application'}.`, `- Gaps: ${(job.missing_skills || []).slice(0,8).map(safe).join(', ') || 'No gaps extracted; still review the full requirements'}.`, `- Source first collected: ${new Date(job.collected_at).toISOString()}; last seen: ${job.last_seen_at ? new Date(job.last_seen_at).toISOString() : 'unknown'}.`, `- ${link ? `[Open original posting](${link})` : 'Original link unavailable'}`, '');
     }
+    lines.push('## Germany networking queue', '', 'Prepared automatically from new German job matches. Search links identify possible contacts, not verified recruiters or sponsorship offers. Open a profile, check relevance and existing invitations, then send through LinkedIn. No invitations or messages are sent by this workflow.', '');
+    const employers = [...new Set(rows.filter(job => ['de', 'germany'].includes(String(job.country).toLowerCase())).map(job => String(job.company || '').trim()).filter(Boolean))].slice(0, 3);
+    if (!employers.length) lines.push('No new German employer targets in this shortlist today. Check previously saved targets instead of sending unrelated invitations.', '');
+    for (const company of employers) {
+      const search = 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(company + ' talent acquisition Germany software');
+      const shortCompany = safe(company).slice(0, 45);
+      const note = `Hi [Name], I saw a software opening at ${shortCompany}. I build C#/.NET and database applications and am exploring roles in Germany. I would be glad to connect. Best, Hari`;
+      lines.push(`### Networking target: ${safe(company)}`, '', `- [Find relevant hiring contacts](${search})`, '- Look for a Germany-based technical recruiter, engineering manager or software/data team member at this employer.', `- Note draft (replace [Name], keep within the displayed limit): ${note}`, '- Record who you invited and the date. A pending invitation is not an accepted connection.', '');
+    }
     if (rows.length) lines.push('## Application preparation', '', 'For the best credible match, use the project case studies and current approved CV. Confirm hands-on requirements before tailoring. No application was submitted and no qualifications were generated.', '');
   } catch(error) {
     lines.push('## Collection/profile check needs attention', '', safe(error instanceof Error && error.message.startsWith('The intended') ? error.message : 'Could not read the current job matches. Check the workflow configuration and database availability; no candidate data was changed.'), '');
@@ -46,7 +55,7 @@ async function main() {
     const draft = posts[((index%posts.length)+posts.length)%posts.length];
     lines.push('## LinkedIn post draft — review before publishing', '', draft, '', 'Review current implementation status and confidentiality before posting. Schedule through LinkedIn’s native scheduler. Nothing has been published.', '');
   }
-  lines.push('## Your next actions', '', 'Review the shortlist, select a credible vacancy, tailor the CV, and track the application in EuroJob. Keep LinkedIn Featured and contact details pointed to the portfolio. Publishing and recruiter messaging remain manual.', '');
+  lines.push('## Your next actions', '', 'Review the shortlist, select a credible vacancy, tailor the CV, and track the application in EuroJob. Keep LinkedIn Featured and contact details pointed to the portfolio. Review the Germany networking queue and send relevant invitations through LinkedIn. Publishing, recruiter messaging and connection requests are not sent by this workflow.', '');
   const output=lines.join('\n');
   await writeFile('career-brief.md',output);
   if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,output);

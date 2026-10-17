@@ -41,7 +41,7 @@ async function main() {
     if (!employers.length) lines.push('No new German employer targets in this shortlist today. Check previously saved targets instead of sending unrelated invitations.', '');
     for (const company of employers) {
       const search = 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(company + ' talent acquisition Germany software');
-      const shortCompany = safe(company).slice(0, 45);
+      const shortCompany = safe(company).slice(0, 25);
       const note = `Hi [Name], I saw a software opening at ${shortCompany}. I build C#/.NET and database applications and am exploring roles in Germany. I would be glad to connect. Best, Hari`;
       lines.push(`### Networking target: ${safe(company)}`, '', `- [Find relevant hiring contacts](${search})`, '- Look for a Germany-based technical recruiter, engineering manager or software/data team member at this employer.', `- Note draft (replace [Name], keep within the displayed limit): ${note}`, '- Record who you invited and the date. A pending invitation is not an accepted connection.', '');
     }

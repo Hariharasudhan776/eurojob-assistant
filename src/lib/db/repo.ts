@@ -292,6 +292,7 @@ export async function usersWithProfiles(): Promise<{ user_id: number; email: str
   const { rows } = await getPool().query(
     `SELECT DISTINCT ON (u.id) u.id AS user_id, u.email, p.id AS profile_id
        FROM users u JOIN profiles p ON p.user_id = u.id
+      WHERE u.status = 'active' -- a rejected test account once filled the free DB with daily scores
       ORDER BY u.id, p.version DESC`
   );
   return rows as { user_id: number; email: string; profile_id: number }[];

@@ -227,7 +227,10 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'python', display: 'Python', category: 'language', aliases: ['python3'] },
   { canonical: 'java', display: 'Java', category: 'language', aliases: ['java 8', 'java 11', 'core java'] },
   { canonical: 'csharp', display: 'C#', category: 'language', aliases: ['c#', '.net', 'dotnet', 'asp.net'] },
-  { canonical: 'shell', display: 'Shell scripting', category: 'language', aliases: ['bash', 'shell script', 'powershell'] },
+  // PowerShell is its own requirement: held PowerShell must not print "Bash".
+  { canonical: 'shell', display: 'Shell scripting', category: 'language', aliases: ['bash', 'shell script', 'shell scripting', 'unix shell'] },
+  { canonical: 'powershell', display: 'PowerShell', category: 'language', aliases: ['powershell', 'powershell scripting'], related: { shell: 0.5 } },
+  { canonical: 'android', display: 'Android', category: 'framework', aliases: ['android development', 'android sdk', 'android apps', 'android app development'], related: { java: 0.3 } },
   /**
    * Scheduled jobs are their own skill, NOT an alias of `shell`.
    *
@@ -283,6 +286,8 @@ export const TAXONOMY: TaxonomyEntry[] = [
   { canonical: 'dbeaver', display: 'DBeaver', category: 'tool', aliases: [] },
   { canonical: 'pgadmin', display: 'pgAdmin', category: 'tool', aliases: ['pgagent'] },
   { canonical: 'postman', display: 'Postman', category: 'tool', aliases: ['api testing'] },
+  { canonical: 'visual-studio', display: 'Visual Studio', category: 'tool', aliases: ['visual studio', 'vs 2022'] },
+  { canonical: 'android-studio', display: 'Android Studio', category: 'tool', aliases: ['android studio'], related: { android: 0.5 } },
   { canonical: 'rest-api', display: 'REST APIs', category: 'framework', aliases: ['rest', 'restful', 'rest api', 'api integration', 'web services'] },
   { canonical: 'docker', display: 'Docker', category: 'tool', aliases: ['containers', 'containerisation'] },
   { canonical: 'kubernetes', display: 'Kubernetes', category: 'tool', aliases: ['k8s'] },

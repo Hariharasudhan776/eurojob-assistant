@@ -276,7 +276,9 @@ export async function renderCoverLetter(
     children.push(new Paragraph({ spacing: { after: 160 }, children: [run(paragraph)] }));
   }
 
-  children.push(plain(letter.closing, { after: 40 }));
+  // The model often signs the closing itself; the name line below already does.
+  const closing = letter.closing.trim().endsWith(profile.name) ? letter.closing.trim().slice(0, -profile.name.length).trim() : letter.closing;
+  children.push(plain(closing, { after: 40 }));
   children.push(plain(profile.name, { bold: true, after: 0 }));
 
   const doc = new Document({

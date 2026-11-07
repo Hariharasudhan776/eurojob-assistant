@@ -14,7 +14,7 @@ import {
   type Tone,
 } from './prompts.ts';
 import { verifyClaims, verifyProvenance, type Violation } from './verify.ts';
-import { buildMirrorPlan } from '../resume/mirror.ts';
+import { buildMirrorPlan, type MirrorPlan } from '../resume/mirror.ts';
 import { PROFILE_DRAFT_SYSTEM, ProfileDraft, profileDraftPrompt } from '../resume/draft.ts';
 import {
   EVIDENCE_SYSTEM,
@@ -53,6 +53,85 @@ function transferableKeys(match: MatchResult): string[] {
   return match.requirements.required
     .filter((v) => v.weight > 0 && v.weight < 1)
     .map((v) => v.requirement);
+}
+
+/**
+ * The guarantee half of resume tailoring: everything that makes an output safe
+ * to print, whoever wrote it. Exported so a hand-written resume (scripts/tailor.ts
+ * --from) passes exactly the checks an AI-written one does.
+ */
+export function checkTailoredResume(profile: CandidateProfile, output: TailoredResume, match: MatchResult, mirror: MirrorPlan) {
+  const texts = [output.summary, ...output.bullets.flatMap((b) => b.bullets)];
+  const check = verifyClaims(profile, texts, { transferable: transferableKeys(match) });
+  const provenanceViolations = verifyProvenance(profile, output.provenance);
+
+  // A skill order that names something not in the profile is an addition
+  // dressed up as a reordering, so it is checked separately.
+  const known = new Set(profile.skills.map((s) => s.name.toLowerCase()));
+  const invented = output.skillOrder.filter((name) => !known.has(name.toLowerCase()));
+  const skillViolations: Violation[] = invented.map((name) => ({
+    severity: 'blocking' as const,
+    kind: 'unevidenced_skill' as const,
+    detail: `"${name}" was placed in the skills list but is not a skill in the profile.`,
+    offendingText: name,
+  }));
+
+  // A relabel is only a relabel if the thing being relabelled exists. A pair
+  // naming a skill the profile does not have is an addition wearing a
+  // disguise, and it is the one new way this stage could lie.
+  const labelViolations: Violation[] = output.skillLabels
+    .filter((pair) => !known.has(pair.profileSkill.toLowerCase()))
+    .map((pair) => ({
+      severity: 'blocking' as const,
+      kind: 'unevidenced_skill' as const,
+      detail:
+        `The output asks to print "${pair.printAs}" as the label for "${pair.profileSkill}", ` +
+        'but no such skill exists in the profile.',
+      offendingText: pair.printAs,
+    }));
+
+  // The prompt lists the forbidden terms; this checks the model obeyed. The
+  // prompt is the request, this is the guarantee -- the same division of
+  // labour verify.ts is built on.
+  const forbidden = [...mirror.confirm, ...mirror.gaps].flatMap((entry) => entry.surface);
+  const haystack = [
+    output.targetTitle,
+    output.summary,
+    ...output.skillOrder,
+    ...output.skillLabels.map((p) => p.printAs),
+    ...output.bullets.flatMap((b) => b.bullets),
+  ]
+    .join('\n')
+    .toLowerCase();
+  const leaked = forbidden.filter((term) => {
+    const escaped = term.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\function jobFingerprint(job: NormalisedJob): string {');
+    return new RegExp(`(^|[^a-z0-9+#])${escaped}($|[^a-z0-9+#])`, 'i').test(haystack);
+  });
+  const leakViolations: Violation[] = [...new Set(leaked)].map((term) => ({
+    severity: 'blocking' as const,
+    kind: 'unevidenced_skill' as const,
+    detail:
+      `"${term}" is a requirement of this posting that the candidate has not confirmed, ` +
+      'and it appears in the tailored resume. Confirm it on the job page if it is true, ' +
+      'or regenerate.',
+    offendingText: term,
+  }));
+
+  const violations = [
+    ...check.violations,
+    ...provenanceViolations,
+    ...skillViolations,
+    ...labelViolations,
+    ...leakViolations,
+  ];
+  return { violations, safe: violations.every((v) => v.severity !== 'blocking') };
+}
+
+export function checkCoverLetter(profile: CandidateProfile, output: CoverLetter, match: MatchResult) {
+  const check = verifyClaims(profile, [...output.paragraphs, ...output.claimsMade, output.subjectLine], {
+    transferable: transferableKeys(match),
+  });
+  return { violations: check.violations, safe: check.ok };
 }
 
 function jobFingerprint(job: NormalisedJob): string {
@@ -131,70 +210,7 @@ export class AiServices {
       effort: 'high',
     });
 
-    const texts = [output.summary, ...output.bullets.flatMap((b) => b.bullets)];
-    const check = verifyClaims(this.profile, texts, { transferable: transferableKeys(match) });
-    const provenanceViolations = verifyProvenance(this.profile, output.provenance);
-
-    // A skill order that names something not in the profile is an addition
-    // dressed up as a reordering, so it is checked separately.
-    const known = new Set(this.profile.skills.map((s) => s.name.toLowerCase()));
-    const invented = output.skillOrder.filter((name) => !known.has(name.toLowerCase()));
-    const skillViolations: Violation[] = invented.map((name) => ({
-      severity: 'blocking' as const,
-      kind: 'unevidenced_skill' as const,
-      detail: `"${name}" was placed in the skills list but is not a skill in the profile.`,
-      offendingText: name,
-    }));
-
-    // A relabel is only a relabel if the thing being relabelled exists. A pair
-    // naming a skill the profile does not have is an addition wearing a
-    // disguise, and it is the one new way this stage could lie.
-    const labelViolations: Violation[] = output.skillLabels
-      .filter((pair) => !known.has(pair.profileSkill.toLowerCase()))
-      .map((pair) => ({
-        severity: 'blocking' as const,
-        kind: 'unevidenced_skill' as const,
-        detail:
-          `The output asks to print "${pair.printAs}" as the label for "${pair.profileSkill}", ` +
-          'but no such skill exists in the profile.',
-        offendingText: pair.printAs,
-      }));
-
-    // The prompt lists the forbidden terms; this checks the model obeyed. The
-    // prompt is the request, this is the guarantee -- the same division of
-    // labour verify.ts is built on.
-    const forbidden = [...mirror.confirm, ...mirror.gaps].flatMap((entry) => entry.surface);
-    const haystack = [
-      output.targetTitle,
-      output.summary,
-      ...output.skillOrder,
-      ...output.skillLabels.map((p) => p.printAs),
-      ...output.bullets.flatMap((b) => b.bullets),
-    ]
-      .join('\n')
-      .toLowerCase();
-    const leaked = forbidden.filter((term) => {
-      const escaped = term.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`(^|[^a-z0-9+#])${escaped}($|[^a-z0-9+#])`, 'i').test(haystack);
-    });
-    const leakViolations: Violation[] = [...new Set(leaked)].map((term) => ({
-      severity: 'blocking' as const,
-      kind: 'unevidenced_skill' as const,
-      detail:
-        `"${term}" is a requirement of this posting that the candidate has not confirmed, ` +
-        'and it appears in the tailored resume. Confirm it on the job page if it is true, ' +
-        'or regenerate.',
-      offendingText: term,
-    }));
-
-    const violations = [
-      ...check.violations,
-      ...provenanceViolations,
-      ...skillViolations,
-      ...labelViolations,
-      ...leakViolations,
-    ];
-    return { output, violations, safe: violations.every((v) => v.severity !== 'blocking') };
+    return { output, ...checkTailoredResume(this.profile, output, match, mirror) };
   }
 
   /**
@@ -283,7 +299,7 @@ export class AiServices {
   async writeCoverLetter(job: NormalisedJob, match: MatchResult, tone: Tone): Promise<Verified<CoverLetter>> {
     const output = await this.ai.complete({
       kind: `cover-letter`,
-      cacheKey: hashKey(jobFingerprint(job), this.profile.version, tone),
+      cacheKey: hashKey('letter-v3', jobFingerprint(job), this.profile.version, tone),
       system: COVER_LETTER_SYSTEM,
       stableContext: this.stableContext,
       prompt: coverLetterPrompt(job, match, tone),
@@ -292,10 +308,7 @@ export class AiServices {
       effort: 'medium',
     });
 
-    const check = verifyClaims(this.profile, [...output.paragraphs, ...output.claimsMade, output.subjectLine], {
-      transferable: transferableKeys(match),
-    });
-    return { output, violations: check.violations, safe: check.ok };
+    return { output, ...checkCoverLetter(this.profile, output, match) };
   }
 }
 

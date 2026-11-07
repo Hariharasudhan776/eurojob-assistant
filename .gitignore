@@ -27,3 +27,6 @@ PROFILE-ANALYSIS.md
 # Apply bot: personal answers, its log, screenshots and generated cover letters.
 data/apply-answers.json
 data/apply/
+
+# tailored resumes live in the private career repo (career/eurojob-tailored)
+data/tailored/

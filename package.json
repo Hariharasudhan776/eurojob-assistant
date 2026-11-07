@@ -18,7 +18,9 @@
     "agent": "node --experimental-strip-types scripts/agent.ts",
     "user:password": "node --experimental-strip-types scripts/set-password.ts",
     "db:copy": "node --experimental-strip-types scripts/copy-to-remote.ts",
-    "apply": "node --experimental-strip-types scripts/apply.ts"
+    "apply": "node --experimental-strip-types scripts/apply.ts",
+    "tailor": "node --experimental-strip-types scripts/tailor.ts",
+    "job:add": "node --experimental-strip-types scripts/add-job.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

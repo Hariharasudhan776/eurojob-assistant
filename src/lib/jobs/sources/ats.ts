@@ -87,7 +87,7 @@ function decodeEntities(text: string): string {
     .replace(/&amp;/g, '&'); // last, so "&amp;lt;" does not become a tag
 }
 
-async function fetchGreenhouse(board: AtsBoard): Promise<NormalisedJob[]> {
+export async function fetchGreenhouse(board: AtsBoard): Promise<NormalisedJob[]> {
   const url = `https://boards-api.greenhouse.io/v1/boards/${board.slug}/jobs?content=true`;
   const payload = (await getJson(url)) as { jobs?: GreenhouseJob[] } | null;
 
@@ -132,7 +132,7 @@ interface LeverJob {
   workplaceType?: string;
 }
 
-async function fetchLever(board: AtsBoard): Promise<NormalisedJob[]> {
+export async function fetchLever(board: AtsBoard): Promise<NormalisedJob[]> {
   const url = `https://api.lever.co/v0/postings/${board.slug}?mode=json`;
   const payload = (await getJson(url)) as LeverJob[] | null;
 
@@ -181,7 +181,7 @@ interface AshbyJob {
   isListed?: boolean;
 }
 
-async function fetchAshby(board: AtsBoard): Promise<NormalisedJob[]> {
+export async function fetchAshby(board: AtsBoard): Promise<NormalisedJob[]> {
   const url = `https://api.ashbyhq.com/posting-api/job-board/${board.slug}`;
   const payload = (await getJson(url)) as { jobs?: AshbyJob[] } | null;
 
@@ -325,7 +325,7 @@ const toDate = (value: string | undefined): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-function normalise(input: {
+export function normalise(input: {
   slug: string;
   url: string;
   title: string;

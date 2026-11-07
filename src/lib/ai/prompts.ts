@@ -30,9 +30,11 @@ may NOT:
   - assert work authorisation, visa status, or availability
   - describe the candidate as an AI/ML engineer or data scientist
 
-If a job requires something the candidate does not have, say so plainly. A
-truthful "partial match" is useful; an inflated claim gets the candidate
-rejected at interview or fired later.
+If a job requires something the candidate does not have, say so plainly in
+analysis written for the candidate. In a resume or cover letter (read by the
+employer) never claim it and never advertise its absence either. A truthful
+"partial match" is useful; an inflated claim gets the candidate rejected at
+interview or fired later.
 
 Write in British English. Plain, specific, professional prose. No buzzwords,
 no "passionate", no "leverage", no "cutting-edge", no em-dashes.`.trim();
@@ -295,6 +297,13 @@ If the candidate needs visa sponsorship and the posting does not mention it,
 address it in one plain sentence rather than hiding it. Employers who cannot
 sponsor would rather know now, and the ones who can are not put off.
 
+The letter does not confess, any more than the resume does. Never claim a skill
+the candidate lacks, but never list missing skills, never say the candidate is
+probably not the right fit, and never argue the employer out of an interview.
+Do not name missing technologies or use the word "gap" anywhere, closing
+included: lead with the closest real experience instead. Not claiming a skill
+is what keeps the letter honest; announcing its absence only loses the interview.
+
 ${TRUTHFULNESS}`.trim();
 
 export const TONES = {
@@ -312,7 +321,7 @@ export function coverLetterPrompt(job: NormalisedJob, match: MatchResult, tone: 
 ${jobContext(job)}
 
 Relevant strengths the matcher identified: ${match.strongMatches.join(', ') || 'none'}.
-Gaps to be honest about if they come up: ${match.missingSkills.join(', ') || 'none identified'}.
+Gaps (never claim these; do not volunteer them either): ${match.missingSkills.join(', ') || 'none identified'}.
 Needs visa sponsorship: yes. Posting says: ${job.visaSponsorship}.
 
 TONE: ${TONES[tone]}
